@@ -23,7 +23,7 @@ function App() {
   const [documents, setDocuments] = useState([])
   const [sidebarLoading, setSidebarLoading] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024)
-  const [isWordWrap, setIsWordWrap] = useState(false)
+  const [isWordWrap, setIsWordWrap] = useState(true)
   const chatEndRef = useRef(null)
 
   // ── Carregar lista de documentos na inicialização ──────────────────────────

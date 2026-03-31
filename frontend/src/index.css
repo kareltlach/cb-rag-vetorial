@@ -713,7 +713,8 @@ body {
 /* Word Wrap specific styles */
 .code-block.word-wrap .code-block-content code {
   white-space: pre-wrap !important;
-  word-break: break-all;
+  word-break: break-word; /* Melhor que break-all para manter palavras inteiras */
+  overflow-x: hidden;
 }
 
 .code-block.word-wrap .code-line {
