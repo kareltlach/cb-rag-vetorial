@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from pinecone import Pinecone
 from google import genai
 from google.genai import types
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, RetryError
 
 load_dotenv()
 
@@ -25,7 +25,7 @@ app.add_middleware(
 # Configurações do RAG
 INDEX_NAME = "multimodal-rag"
 EMBEDDING_MODEL = "gemini-embedding-2-preview"
-GENERATIVE_MODEL = "gemini-3.1-flash-lite-preview"
+GENERATIVE_MODEL = "gemini-2.5-flash"
 
 SYSTEM_PROMPT = """
 Você é um especialista em Design e Experiência do Usuário (UX). 
@@ -36,6 +36,7 @@ INSTRUÇÕES:
 2. Formate sua resposta como um **passo a passo ou tutorial curto** sempre que possível.
 3. Se a informação não estiver presente nos documentos, diga gentilmente que não encontrou esse detalhe específico no material indexado.
 4. Mantenha um tom profissional, mas acessível.
+5. SEMPRE que você apresentar um 'Prompt' (instrução para IA) extraído dos documentos, você DEVE envolvê-lo em blocos de código usando três crases (```) para que o sistema o exiba no editor de código. Nunca use aspas comuns ou citações (>) para o texto do prompt em si.
 
 ---
 TRECHOS DE DOCUMENTOS:
@@ -177,13 +178,19 @@ async def search(search_query: SearchQuery):
 
     except Exception as e:
         error_msg = str(e)
+        
+        # Se for um erro do Tenacity (RetryError), extraímos a causa real
+        if isinstance(e, RetryError):
+            try:
+                e.last_attempt.result() # Isso vai disparar a exceção original
+            except Exception as inner_e:
+                error_msg = str(inner_e)
+
         print(f"ERRO NO BACKEND: {error_msg}")
 
-        if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-            raise HTTPException(
-                status_code=429,
-                detail="A cota do Google Gemini foi atingida. Aguarde e tente novamente."
-            )
+        if "429" in error_msg or "QUOTA_EXHAUSTED" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+            friendly_msg = "A cota do Google Gemini foi atingida para este período (429). Por favor, mude para o modelo 'Gemini 1.5 Flash' nas configurações ou aguarde 1 minuto."
+            raise HTTPException(status_code=429, detail=friendly_msg)
 
         import traceback
         traceback.print_exc()
