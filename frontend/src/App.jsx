@@ -97,7 +97,7 @@ function App() {
     return lines.map((line, li) => {
       const key = `${baseKey}-${li}`
       // Linha vazia
-      if (!line.trim()) return <br key={key} />
+      if (!line.trim()) return <div key={key} style={{ height: '0.4rem' }} />
       // Cabeçalhos ### e ##
       if (line.startsWith('### ')) return <h4 key={key} className="md-h4">{renderSpan(line.slice(4))}</h4>
       if (line.startsWith('## ')) return <h3 key={key} className="md-h3">{renderSpan(line.slice(3))}</h3>
