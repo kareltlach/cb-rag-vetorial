@@ -57,7 +57,20 @@ body {
   z-index: 10;
   overflow-y: auto;
   scrollbar-width: none;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow-x: hidden;
+  flex-shrink: 0;
 }
+
+.sidebar.closed {
+  width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  opacity: 0;
+  pointer-events: none;
+  border-right: none;
+}
+
 .sidebar::-webkit-scrollbar { display: none; }
 
 .sidebar-header {
@@ -142,9 +155,51 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 2.5rem;
   position: relative;
   overflow: hidden;
+  transition: padding 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 2.5rem 5rem;
+}
+
+.mobile-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  z-index: 100;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.sidebar-toggle {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--text-main);
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1.2rem;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+}
+
+.sidebar-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #60a5fa;
+  transform: translateY(-1px);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
 }
 
 .header {
@@ -211,7 +266,7 @@ body {
 }
 
 .message {
-  max-width: 80%;
+  max-width: 92%;
   padding: 1.2rem 1.5rem;
   border-radius: 24px;
   animation: fadeIn 0.3s ease-out;
@@ -316,9 +371,9 @@ body {
   border-radius: 50px;
   border: 1px solid var(--glass-border);
   backdrop-filter: blur(20px);
-  max-width: 800px;
-  margin-left: auto;
-  margin-right: auto;
+  max-width: 100%;
+  margin-left: 0;
+  margin-right: 0;
   width: 100%;
 }
 
@@ -694,4 +749,81 @@ body {
 }
 .code-block-content::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Responsiveness ────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .sidebar {
+    position: fixed;
+    height: 100%;
+    z-index: 101;
+    background: rgba(10, 15, 30, 0.95);
+    box-shadow: 20px 0 80px rgba(0, 0, 0, 0.6);
+  }
+  
+  .sidebar.closed {
+    transform: translateX(-100%);
+    width: 320px;
+    opacity: 1;
+  }
+
+  .mobile-overlay {
+    display: block;
+  }
+
+  .main-content {
+    padding: 2rem 1.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .header h1 {
+    font-size: 1.6rem;
+    letter-spacing: -0.5px;
+  }
+  
+  .header p {
+    font-size: 0.8rem;
+  }
+
+  .message {
+    max-width: 95%;
+    padding: 1rem 1.2rem;
+  }
+
+  .results-container {
+    justify-content: center;
+  }
+
+  .result-card {
+    width: 100%;
+  }
+
+  .input-area {
+    margin-top: 1.5rem;
+    padding: 0.6rem;
+  }
+
+  .input-area input {
+    font-size: 0.9rem;
+    padding-left: 1rem;
+  }
+
+  .code-block {
+    margin: 1rem -0.5rem;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+
+  .line-numbers {
+    min-width: 35px;
+    padding-left: 0.6rem;
+    font-size: 0.7rem;
+  }
+
+  .code-block-content code {
+    font-size: 0.78rem;
+    padding: 1.2rem 0.8rem;
+  }
 }

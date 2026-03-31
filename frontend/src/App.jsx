@@ -22,6 +22,7 @@ function App() {
   const [lastQuery, setLastQuery] = useState('')
   const [documents, setDocuments] = useState([])
   const [sidebarLoading, setSidebarLoading] = useState(false)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024)
   const chatEndRef = useRef(null)
 
   // ── Carregar lista de documentos na inicialização ──────────────────────────
@@ -141,31 +142,36 @@ function App() {
     }
 
     return (
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <h2>Analisando agora</h2>
-        </div>
+      <>
+        {/* Overlay para fechar sidebar no mobile */}
+        {isSidebarOpen && <div className="mobile-overlay" onClick={() => setIsSidebarOpen(false)} />}
         
-        {sidebarLoading ? (
-          <div className="loader"><div className="dot"></div><div className="dot"></div><div className="dot"></div></div>
-        ) : (
-          <div className="doc-list">
-            {documents.length > 0 ? documents.map((doc, idx) => (
-              <div key={idx} className="doc-item">
-                <div className="doc-icon">{getIcon(doc.type)}</div>
-                <div className="doc-info">
-                  <div className="doc-name">{doc.name}</div>
-                  <div className="doc-meta">{doc.type}</div>
-                </div>
-              </div>
-            )) : (
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', padding: '1rem' }}>
-                Nenhum documento encontrado em /data.
-              </p>
-            )}
+        <aside className={`sidebar ${isSidebarOpen ? 'open' : 'closed'}`}>
+          <div className="sidebar-header">
+            <h2>Analisando agora</h2>
           </div>
-        )}
-      </aside>
+          
+          {sidebarLoading ? (
+            <div className="loader"><div className="dot"></div><div className="dot"></div><div className="dot"></div></div>
+          ) : (
+            <div className="doc-list">
+              {documents.length > 0 ? documents.map((doc, idx) => (
+                <div key={idx} className="doc-item">
+                  <div className="doc-icon">{getIcon(doc.type)}</div>
+                  <div className="doc-info">
+                    <div className="doc-name">{doc.name}</div>
+                    <div className="doc-meta">{doc.type}</div>
+                  </div>
+                </div>
+              )) : (
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', padding: '1rem' }}>
+                  Nenhum documento encontrado em /data.
+                </p>
+              )}
+            </div>
+          )}
+        </aside>
+      </>
     )
   }
 
@@ -240,9 +246,14 @@ function App() {
       
       <main className="main-content">
         <header className="header">
-          <div className="header-content">
-            <h1>Grupo Casas Bahia RAG</h1>
-            <p>Embeddings 2 & Pinecone Multimodal Experience</p>
+          <div className="header-left">
+            <button className="sidebar-toggle" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
+              {isSidebarOpen ? '❮' : '☰'}
+            </button>
+            <div className="header-content">
+              <h1>Casas Bahia RAG</h1>
+              <p>Multimodal Agent</p>
+            </div>
           </div>
           <button className="settings-toggle" onClick={() => setIsSettingsOpen(true)}>⚙️</button>
         </header>
