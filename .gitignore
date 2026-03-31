@@ -1,0 +1,39 @@
+# Dependency directories
+node_modules/
+dist/
+build/
+.next/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.cache
+nosetests.xml
+coverage.xml
+
+# Logs
+*.log
+server_log_*.txt
+setup_log.txt
+
+# OS Specific
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# SECURITY: CRITICAL
+.env
+.env.*
+!.env.example
+.git/
