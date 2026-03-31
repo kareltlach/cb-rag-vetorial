@@ -4,6 +4,104 @@ import './index.css'
 // URL base da API — Vite proxy redireciona /api no dev, Vercel serverless em produção
 const API_BASE = ''
 
+const getStatKey = (text) => {
+  if (!text) return 'p-empty'
+  const clean = text.trim()
+  // Cria um "slug" legível dos primeiros 25 caracteres para servir de título
+  const slug = clean.substring(0, 25)
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_]/gi, '')
+    .substring(0, 20)
+  return `p-${clean.length}-${slug}`
+}
+
+const beautifyPromptId = (id) => {
+  if (!id || !id.startsWith('p-')) return id
+  const parts = id.split('-')
+  if (parts.length < 3) return `Prompt #${parts[1] || '?'}`
+  // Pega o slug e transforma de volta em texto legível
+  const slug = parts.slice(2).join('-')
+  const readable = slug.replace(/_/g, ' ')
+  return readable.charAt(0).toUpperCase() + readable.slice(1)
+}
+
+// Componente para renderizar o bloco de código com tracking de visualização
+const PromptCodeBlock = ({ inner, blockKey, isWordWrap, setIsWordWrap, copyToClipboard, shareToTeams, copiedIdx, updateStat }) => {
+  const [stats, setStats] = useState({ views: 0, copies: 0, shares: 0 })
+  const lines = inner.trim().split('\n')
+  const key = getStatKey(inner.trim())
+
+  useEffect(() => {
+    // Buscar estatísticas atuais
+    fetch(`${API_BASE}/api/stats/${key}`)
+      .then(res => res.json())
+      .then(data => setStats(data))
+      .catch(err => console.error('Erro ao buscar stats:', err))
+
+    // Marcar visualização
+    updateStat(inner.trim(), 'views')
+      .then(success => {
+        if (success) setStats(prev => ({ ...prev, views: prev.views + 1 }))
+      })
+  }, [])
+
+  return (
+    <div key={blockKey} className={`code-block ${isWordWrap ? 'word-wrap' : ''}`}>
+      <div className="code-block-header">
+        <span className="code-block-label">📋 Prompt de Pesquisa</span>
+        <div className="code-block-actions">
+          <button 
+            className={`wrap-toggle-btn ${isWordWrap ? 'active' : ''}`}
+            onClick={() => setIsWordWrap(!isWordWrap)}
+            title="Toggle Word Wrap"
+          >
+            {isWordWrap ? 'Wrap: ON' : 'Wrap: OFF'}
+          </button>
+          <button
+            className="share-teams-btn"
+            onClick={() => shareToTeams(inner.trim())}
+            title="Compartilhar no Microsoft Teams"
+          >
+            Teams
+          </button>
+          <button
+            className={`copy-btn ${copiedIdx[blockKey] ? 'copied' : ''}`}
+            onClick={() => copyToClipboard(inner.trim(), blockKey)}
+          >
+            {copiedIdx[blockKey] ? '✓ Copiado!' : 'Copiar Prompt'}
+          </button>
+        </div>
+      </div>
+      <div className="code-editor-container">
+        {stats.views > 50 && (
+          <div className="popular-badge" title="Este prompt está em alta!">
+            🔥 Popular
+          </div>
+        )}
+        {!isWordWrap && (
+          <div className="line-numbers">
+            {lines.map((_, i) => <div key={i}>{i + 1}</div>)}
+          </div>
+        )}
+        <pre className="code-block-content">
+          <code>
+            {lines.map((line, i) => (
+              <div key={i} className="code-line">{line || '\u00A0'}</div>
+            ))}
+          </code>
+        </pre>
+      </div>
+      <div className="code-block-footer">
+        <div className="stats-container">
+          <span className="stat-item" title="Visualizações">👁️ {stats.views}</span>
+          <span className="stat-item" title="Cópias">📋 {stats.copies}</span>
+          <span className="stat-item" title="Compartilhamentos no Teams">👥 {stats.shares}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function App() {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState([
@@ -24,11 +122,26 @@ function App() {
   const [sidebarLoading, setSidebarLoading] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024)
   const [isWordWrap, setIsWordWrap] = useState(true)
+  const [trending, setTrending] = useState([])
   const chatEndRef = useRef(null)
 
-  // ── Carregar lista de documentos na inicialização ──────────────────────────
+  // ── Carregar lista de documentos e trending na inicialização ──────────────────────────
   useEffect(() => {
-    const fetchDocuments = async () => {
+    fetchDocuments()
+    fetchTrending()
+  }, [])
+
+  const fetchTrending = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/stats/trending`)
+      const data = await response.json()
+      setTrending(data)
+    } catch (err) {
+      console.error('Erro ao buscar trending:', err)
+    }
+  }
+
+  const fetchDocuments = async () => {
       setSidebarLoading(true)
       try {
         const response = await fetch(`${API_BASE}/api/documents`)
@@ -42,56 +155,52 @@ function App() {
         setSidebarLoading(false)
       }
     }
-    fetchDocuments()
-  }, [])
 
   // ── Markdown renderer com suporte a blocos de código copiáveis ──────────────
   const [copiedIdx, setCopiedIdx] = useState({})
 
   const copyToClipboard = (text, key) => {
+    updateStat(text, 'copies')
     navigator.clipboard.writeText(text).then(() => {
       setCopiedIdx(prev => ({ ...prev, [key]: true }))
       setTimeout(() => setCopiedIdx(prev => ({ ...prev, [key]: false })), 2000)
     })
   }
 
+  const shareToTeams = (text) => {
+    updateStat(text, 'shares')
+    const encodedText = encodeURIComponent(text)
+    const teamsUrl = `https://teams.microsoft.com/share?msgText=${encodedText}`
+    window.open(teamsUrl, '_blank')
+  }
+
+  const updateStat = async (text, type) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/stats/increment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt_id: getStatKey(text), type })
+      })
+      const result = await response.json()
+      return result.status === 'success'
+    } catch (err) {
+      console.error('Erro ao salvar stat:', err)
+      return false
+    }
+  }
+
   const renderCodeBlock = (inner, key) => {
-    const lines = inner.trim().split('\n')
     return (
-      <div key={key} className={`code-block ${isWordWrap ? 'word-wrap' : ''}`}>
-        <div className="code-block-header">
-          <span className="code-block-label">📋 Prompt de Pesquisa</span>
-          <div className="code-block-actions">
-            <button 
-              className={`wrap-toggle-btn ${isWordWrap ? 'active' : ''}`}
-              onClick={() => setIsWordWrap(!isWordWrap)}
-              title="Toggle Word Wrap"
-            >
-              {isWordWrap ? 'Wrap: ON' : 'Wrap: OFF'}
-            </button>
-            <button
-              className={`copy-btn ${copiedIdx[key] ? 'copied' : ''}`}
-              onClick={() => copyToClipboard(inner.trim(), key)}
-            >
-              {copiedIdx[key] ? '✓ Copiado!' : 'Copiar Prompt'}
-            </button>
-          </div>
-        </div>
-        <div className="code-editor-container">
-          {!isWordWrap && (
-            <div className="line-numbers">
-              {lines.map((_, i) => <div key={i}>{i + 1}</div>)}
-            </div>
-          )}
-          <pre className="code-block-content">
-            <code>
-              {lines.map((line, i) => (
-                <div key={i} className="code-line">{line || '\u00A0'}</div>
-              ))}
-            </code>
-          </pre>
-        </div>
-      </div>
+      <PromptCodeBlock 
+        inner={inner} 
+        blockKey={key} 
+        isWordWrap={isWordWrap}
+        setIsWordWrap={setIsWordWrap}
+        copyToClipboard={copyToClipboard}
+        shareToTeams={shareToTeams}
+        copiedIdx={copiedIdx}
+        updateStat={updateStat}
+      />
     )
   }
 
@@ -143,51 +252,80 @@ function App() {
       return p
     })
   }
+}
 
-  // ── Sidebar Component ──────────────────────────────────────────────────────
-  const Sidebar = () => {
-    const getIcon = (type) => {
-      if (type === 'pdf') return '📄'
-      if (['jpg', 'jpeg', 'png'].includes(type)) return '🖼️'
-      if (['mp4', 'mov', 'webm'].includes(type)) return '🎬'
-      return '📁'
-    }
-
-    return (
-      <>
-        {/* Overlay para fechar sidebar no mobile */}
-        {isSidebarOpen && <div className="mobile-overlay" onClick={() => setIsSidebarOpen(false)} />}
-        
-        <aside className={`sidebar ${isSidebarOpen ? 'open' : 'closed'}`}>
-          <div className="sidebar-header">
-            <h2>Analisando agora</h2>
-          </div>
-          
+// ── Sidebar Component (Moved outside App for better stability) ───────────────
+const Sidebar = ({ isSidebarOpen, setIsSidebarOpen, sidebarLoading, documents, trending, setInput }) => (
+  <>
+    {isSidebarOpen && <div className="mobile-overlay" onClick={() => setIsSidebarOpen(false)} />}
+    <aside className={`sidebar ${!isSidebarOpen ? 'collapsed' : ''}`}>
+      <div className="sidebar-header">
+        <div className="logo-container">
+          <div className="logo-sparkle">✨</div>
+          <h2 className="sidebar-title">Analisando Agora</h2>
+        </div>
+        <button className="sidebar-close-mobile" onClick={() => setIsSidebarOpen(false)}>×</button>
+      </div>
+      
+      <div className="sidebar-section">
+        <h2 className="section-label">📂 Documentos em /data</h2>
+        <ul className="document-list">
           {sidebarLoading ? (
-            <div className="loader"><div className="dot"></div><div className="dot"></div><div className="dot"></div></div>
+            <div className="loading-spinner-small"></div>
+          ) : documents.length > 0 ? (
+            documents.map((doc, idx) => (
+              <li key={idx} className="document-item">
+                <span className="doc-icon">
+                  {['png', 'jpg', 'jpeg'].includes(doc.type) ? '🖼️' : 
+                   ['mp4', 'mov', 'webm'].includes(doc.type) ? '🎬' : '📄'}
+                </span>
+                <div className="doc-info">
+                  <div className="doc-name">{doc.name}</div>
+                  <div className="doc-meta">{doc.type}</div>
+                </div>
+              </li>
+            ))
           ) : (
-            <div className="doc-list">
-              {documents.length > 0 ? documents.map((doc, idx) => (
-                <div key={idx} className="doc-item">
-                  <div className="doc-icon">{getIcon(doc.type)}</div>
-                  <div className="doc-info">
-                    <div className="doc-name">{doc.name}</div>
-                    <div className="doc-meta">{doc.type}</div>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', padding: '1rem' }}>
+              Nenhum documento encontrado em /data.
+            </p>
+          )}
+        </ul>
+      </div>
+
+      {trending.length > 0 && (
+        <div className="sidebar-section trending-section">
+          <h2 className="section-label">🔥 Mais Utilizados</h2>
+          <ul className="trending-list">
+            {trending.map((item, idx) => (
+              <li 
+                key={idx} 
+                className="trending-item" 
+                onClick={() => {
+                  setInput(beautifyPromptId(item.prompt_id))
+                }}
+              >
+                <div className="trending-info">
+                  <span className="trending-name">{beautifyPromptId(item.prompt_id)}</span>
+                  <div className="trending-stats">
+                    <span>👁️ {item.views}</span>
+                    <span>📋 {item.copies}</span>
                   </div>
                 </div>
-              )) : (
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', padding: '1rem' }}>
-                  Nenhum documento encontrado em /data.
-                </p>
-              )}
-            </div>
-          )}
-        </aside>
-      </>
-    )
-  }
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
-  // ── Interaction Logic ──────────────────────────────────────────────────────
+      <div className="sidebar-footer">
+        <p className="version-text">v2.0 Premium AI</p>
+      </div>
+    </aside>
+  </>
+)
+
+function App() {
   useEffect(() => {
     localStorage.setItem('rag-settings', JSON.stringify(settings))
   }, [settings])
@@ -254,7 +392,14 @@ function App() {
 
   return (
     <div className="app-layout">
-      <Sidebar />
+      <Sidebar 
+        isSidebarOpen={isSidebarOpen} 
+        setIsSidebarOpen={setIsSidebarOpen} 
+        sidebarLoading={sidebarLoading} 
+        documents={documents} 
+        trending={trending} 
+        setInput={setInput} 
+      />
       
       <main className="main-content">
         <header className="header">

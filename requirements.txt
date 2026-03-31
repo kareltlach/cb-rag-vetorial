@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pinecone-client[grpc]
+google-genai
+pypdf
+supabase
+tenacity
+python-dotenv
+pydantic
+python-multipart

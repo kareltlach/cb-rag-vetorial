@@ -1,4 +1,6 @@
 import os
+import json
+import httpx
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +14,103 @@ from google import genai
 from google.genai import types
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, RetryError
 
+# Carrega variáveis de ambiente do arquivo .env
 load_dotenv()
+
+# Configuração Supabase Lite (via httpx)
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+
+class SupabaseLite:
+    def __init__(self, url, key):
+        self.url = f"{url.rstrip('/')}/rest/v1"
+        self.headers = {
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation"
+        }
+
+    async def get_stats(self, prompt_id):
+        if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+            return None
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.url}/prompt_statistics?prompt_id=eq.{prompt_id}"
+                response = await client.get(url, headers=self.headers)
+                data = response.json()
+                return data[0] if data else None
+        except Exception as e:
+            print(f"Erro Supabase GET: {e}")
+            return None
+
+    async def increment_stat(self, prompt_id, stat_type):
+        if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+            return False
+        try:
+            current = await self.get_stats(prompt_id)
+            async with httpx.AsyncClient() as client:
+                if not current:
+                    payload = {
+                        "prompt_id": prompt_id,
+                        "views": 1 if stat_type == "views" else 0,
+                        "copies": 1 if stat_type == "copies" else 0,
+                        "shares": 1 if stat_type == "shares" else 0
+                    }
+                    await client.post(f"{self.url}/prompt_statistics", headers=self.headers, json=payload)
+                else:
+                    new_val = current.get(stat_type, 0) + 1
+                    payload = {stat_type: new_val}
+                    url = f"{self.url}/prompt_statistics?prompt_id=eq.{prompt_id}"
+                    await client.patch(url, headers=self.headers, json=payload)
+                return True
+        except Exception as e:
+            print(f"Erro Supabase Increment: {e}")
+            return False
+
+    async def get_trending(self, limit=5):
+        if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+            return []
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.url}/prompt_statistics?order=views.desc&limit={limit}"
+                response = await client.get(url, headers=self.headers)
+                return response.json()
+        except Exception as e:
+            print(f"Erro Supabase Trending: {e}")
+            return []
+
+sb_lite = SupabaseLite(SUPABASE_URL, SUPABASE_ANON_KEY) if SUPABASE_URL and SUPABASE_ANON_KEY else None
+
+class LocalStatsStore:
+    def __init__(self, filename="stats.json"):
+        self.filename = filename
+        if not os.path.exists(self.filename):
+            with open(self.filename, 'w') as f:
+                json.dump({}, f)
+    
+    def get(self, prompt_id):
+        try:
+            with open(self.filename, 'r') as f:
+                data = json.load(f)
+            return data.get(prompt_id, {"views": 0, "copies": 0, "shares": 0})
+        except:
+            return {"views": 0, "copies": 0, "shares": 0}
+            
+    def increment(self, prompt_id, type):
+        try:
+            with open(self.filename, 'r') as f:
+                data = json.load(f)
+            if prompt_id not in data:
+                data[prompt_id] = {"views": 0, "copies": 0, "shares": 0}
+            data[prompt_id][type] = data[prompt_id].get(type, 0) + 1
+            with open(self.filename, 'w') as f:
+                json.dump(data, f)
+            return True
+        except:
+            return False
+
+_local_stats = LocalStatsStore()
 
 app = FastAPI(title="RAG Multimodal API")
 
@@ -128,7 +226,11 @@ class ChatResponse(BaseModel):
     answer: str
     sources: List[SearchResult]
 
-@app.get("/documents")
+class StatIncrement(BaseModel):
+    prompt_id: str
+    type: str  # 'views', 'copies', 'shares'
+
+@app.get("/api/documents")
 async def list_documents():
     """Lista todos os documentos disponíveis para análise na pasta /data"""
     docs = []
@@ -149,11 +251,11 @@ async def list_documents():
                 })
     return docs
 
-@app.get("/")
+@app.get("/api")
 async def root():
     return {"message": "RAG Multimodal Agent API is running"}
 
-@app.post("/search", response_model=ChatResponse)
+@app.post("/api/search", response_model=ChatResponse)
 async def search(search_query: SearchQuery):
     # Determinar qual cliente e modelo usar
     active_client = client
@@ -245,6 +347,40 @@ async def search(search_query: SearchQuery):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Erro interno: {error_msg}")
+
+@app.get("/api/stats/trending")
+async def get_trending_stats():
+    # Tenta Supabase
+    if sb_lite:
+        data = await sb_lite.get_trending()
+        if data: return data
+    
+    # Fallback vazio
+    return []
+
+@app.get("/api/stats/{prompt_id}")
+async def get_prompt_stats(prompt_id: str):
+    if sb_lite:
+        data = await sb_lite.get_stats(prompt_id)
+        if data: return data
+            
+    # Fallback para local
+    return _local_stats.get(prompt_id)
+
+class StatIncrement(BaseModel):
+    prompt_id: str
+    type: str  # 'views', 'copies', 'shares'
+
+@app.post("/api/stats/increment")
+async def increment_stat(data: StatIncrement):
+    success = False
+    if sb_lite:
+        success = await sb_lite.increment_stat(data.prompt_id, data.type)
+
+    # Sempre atualiza o local também como backup
+    local_success = _local_stats.increment(data.prompt_id, data.type)
+    
+    return {"status": "success" if (success or local_success) else "error"}
 
 if __name__ == "__main__":
     import uvicorn
