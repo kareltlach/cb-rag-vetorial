@@ -23,6 +23,7 @@ function App() {
   const [documents, setDocuments] = useState([])
   const [sidebarLoading, setSidebarLoading] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024)
+  const [isWordWrap, setIsWordWrap] = useState(false)
   const chatEndRef = useRef(null)
 
   // ── Carregar lista de documentos na inicialização ──────────────────────────
@@ -57,20 +58,31 @@ function App() {
   const renderCodeBlock = (inner, key) => {
     const lines = inner.trim().split('\n')
     return (
-      <div key={key} className="code-block">
+      <div key={key} className={`code-block ${isWordWrap ? 'word-wrap' : ''}`}>
         <div className="code-block-header">
           <span className="code-block-label">📋 Prompt de Pesquisa</span>
-          <button
-            className={`copy-btn ${copiedIdx[key] ? 'copied' : ''}`}
-            onClick={() => copyToClipboard(inner.trim(), key)}
-          >
-            {copiedIdx[key] ? '✓ Copiado!' : 'Copiar Prompt'}
-          </button>
+          <div className="code-block-actions">
+            <button 
+              className={`wrap-toggle-btn ${isWordWrap ? 'active' : ''}`}
+              onClick={() => setIsWordWrap(!isWordWrap)}
+              title="Toggle Word Wrap"
+            >
+              {isWordWrap ? 'Wrap: ON' : 'Wrap: OFF'}
+            </button>
+            <button
+              className={`copy-btn ${copiedIdx[key] ? 'copied' : ''}`}
+              onClick={() => copyToClipboard(inner.trim(), key)}
+            >
+              {copiedIdx[key] ? '✓ Copiado!' : 'Copiar Prompt'}
+            </button>
+          </div>
         </div>
         <div className="code-editor-container">
-          <div className="line-numbers">
-            {lines.map((_, i) => <div key={i}>{i + 1}</div>)}
-          </div>
+          {!isWordWrap && (
+            <div className="line-numbers">
+              {lines.map((_, i) => <div key={i}>{i + 1}</div>)}
+            </div>
+          )}
           <pre className="code-block-content">
             <code>
               {lines.map((line, i) => (
