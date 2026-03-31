@@ -34,44 +34,62 @@ function App() {
 
   const renderMarkdown = (text) => {
     if (!text) return null
-    // Divide o texto em blocos de código e texto normal
+    // 1. Tenta identificar blocos de código com ```
     const parts = text.split(/(```[\s\S]*?```)/g)
     return parts.map((part, i) => {
-      // Bloco de código
+      // Bloco de código padrão
       if (part.startsWith('```')) {
         const inner = part.replace(/^```[^\n]*\n?/, '').replace(/```$/, '').trim()
-        const lines = inner.split('\n')
-        const key = `code-${i}`
-        
-        return (
-          <div key={key} className="code-block">
-            <div className="code-block-header">
-              <span className="code-block-label">📋 Prompt de Pesquisa</span>
-              <button
-                className={`copy-btn ${copiedIdx[key] ? 'copied' : ''}`}
-                onClick={() => copyToClipboard(inner, key)}
-              >
-                {copiedIdx[key] ? '✓ Copiado!' : 'Copiar Prompt'}
-              </button>
-            </div>
-            <div className="code-editor-container">
-              <div className="line-numbers">
-                {lines.map((_, i) => <div key={i}>{i + 1}</div>)}
-              </div>
-              <pre className="code-block-content">
-                <code>
-                  {lines.map((line, i) => (
-                    <div key={i} className="code-line">{line || '\u00A0'}</div>
-                  ))}
-                </code>
-              </pre>
-            </div>
-          </div>
-        )
+        return renderCodeBlock(inner, `code-${i}`)
       }
+      
+      // 2. Tenta identificar se o texto "normal" contém citações (>) que parecem prompts
+      // (ex: Crie uma..., Atue como..., Gere...)
+      const promptRegex = /(Prompt:?\s*\n?(?:> .*(\n|$))+)/gi
+      if (promptRegex.test(part)) {
+        const subParts = part.split(promptRegex)
+        return subParts.map((sub, si) => {
+          if (promptRegex.test(sub)) {
+            // Limpa os marcadores de citação (>) para exibir o prompt limpo
+            const cleanPrompt = sub.replace(/^Prompt:?\s*\n?/i, '').replace(/^> /gm, '').trim()
+            return renderCodeBlock(cleanPrompt, `sub-code-${i}-${si}`)
+          }
+          return renderInline(sub, `text-${i}-${si}`)
+        })
+      }
+
       // Texto normal — renderiza markdown inline
       return renderInline(part, i)
     })
+  }
+
+  const renderCodeBlock = (inner, key) => {
+    const lines = inner.trim().split('\n')
+    return (
+      <div key={key} className="code-block">
+        <div className="code-block-header">
+          <span className="code-block-label">📋 Prompt de Pesquisa</span>
+          <button
+            className={`copy-btn ${copiedIdx[key] ? 'copied' : ''}`}
+            onClick={() => copyToClipboard(inner.trim(), key)}
+          >
+            {copiedIdx[key] ? '✓ Copiado!' : 'Copiar Prompt'}
+          </button>
+        </div>
+        <div className="code-editor-container">
+          <div className="line-numbers">
+            {lines.map((_, i) => <div key={i}>{i + 1}</div>)}
+          </div>
+          <pre className="code-block-content">
+            <code>
+              {lines.map((line, i) => (
+                <div key={i} className="code-line">{line || '\u00A0'}</div>
+              ))}
+            </code>
+          </pre>
+        </div>
+      </div>
+    )
   }
 
   const renderInline = (text, baseKey) => {
