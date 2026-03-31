@@ -16,27 +16,100 @@ function App() {
     const saved = localStorage.getItem('rag-settings')
     return saved ? JSON.parse(saved) : {
       apiKey: '',
-      model: 'gemini-3.1-flash-lite-preview'
+      model: 'gemini-2.5-flash'
     }
   })
   const [lastQuery, setLastQuery] = useState('')
   const chatEndRef = useRef(null)
 
+  // ── Markdown renderer com suporte a blocos de código copiáveis ──────────────
+  const [copiedIdx, setCopiedIdx] = useState({})
+
+  const copyToClipboard = (text, key) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedIdx(prev => ({ ...prev, [key]: true }))
+      setTimeout(() => setCopiedIdx(prev => ({ ...prev, [key]: false })), 2000)
+    })
+  }
+
+  const renderMarkdown = (text) => {
+    if (!text) return null
+    // Divide o texto em blocos de código e texto normal
+    const parts = text.split(/(```[\s\S]*?```)/g)
+    return parts.map((part, i) => {
+      // Bloco de código
+      if (part.startsWith('```')) {
+        const inner = part.replace(/^```[^\n]*\n?/, '').replace(/```$/, '').trim()
+        const lines = inner.split('\n')
+        const key = `code-${i}`
+        
+        return (
+          <div key={key} className="code-block">
+            <div className="code-block-header">
+              <span className="code-block-label">📋 Prompt de Pesquisa</span>
+              <button
+                className={`copy-btn ${copiedIdx[key] ? 'copied' : ''}`}
+                onClick={() => copyToClipboard(inner, key)}
+              >
+                {copiedIdx[key] ? '✓ Copiado!' : 'Copiar Prompt'}
+              </button>
+            </div>
+            <div className="code-editor-container">
+              <div className="line-numbers">
+                {lines.map((_, i) => <div key={i}>{i + 1}</div>)}
+              </div>
+              <pre className="code-block-content">
+                <code>
+                  {lines.map((line, i) => (
+                    <div key={i} className="code-line">{line || '\u00A0'}</div>
+                  ))}
+                </code>
+              </pre>
+            </div>
+          </div>
+        )
+      }
+      // Texto normal — renderiza markdown inline
+      return renderInline(part, i)
+    })
+  }
+
+  const renderInline = (text, baseKey) => {
+    const lines = text.split('\n')
+    return lines.map((line, li) => {
+      const key = `${baseKey}-${li}`
+      // Linha vazia
+      if (!line.trim()) return <br key={key} />
+      // Cabeçalhos ### e ##
+      if (line.startsWith('### ')) return <h4 key={key} className="md-h4">{renderSpan(line.slice(4))}</h4>
+      if (line.startsWith('## ')) return <h3 key={key} className="md-h3">{renderSpan(line.slice(3))}</h3>
+      // Item de lista com * ou -
+      if (/^[\*\-] /.test(line)) return <li key={key} className="md-li">{renderSpan(line.slice(2))}</li>
+      // Linha normal
+      return <p key={key} className="md-p">{renderSpan(line)}</p>
+    })
+  }
+
+  const renderSpan = (text) => {
+    // Bold **texto** e inline `code`
+    const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g)
+    return parts.map((p, i) => {
+      if (p.startsWith('**') && p.endsWith('**')) return <strong key={i}>{p.slice(2, -2)}</strong>
+      if (p.startsWith('`') && p.endsWith('`')) return <code key={i} className="md-inline-code">{p.slice(1, -1)}</code>
+      return p
+    })
+  }
+  // ────────────────────────────────────────────────────────────────────────────
+
   // Função para destacar termos de busca no texto
   const renderHighlightedText = (text, query) => {
     if (!query.trim() || !text) return text;
-    
-    // Divide a query em palavras, ignora termos muito curtos (opcional)
     const terms = query.trim().split(/\s+/).filter(t => t.length > 1);
     if (terms.length === 0) return text;
-
-    // Escapa caracteres especiais para Regex e cria o padrão de busca
     const escapedTerms = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     const regex = new RegExp(`(${escapedTerms.join('|')})`, 'gi');
-    
     const parts = text.split(regex);
-    
-    return parts.map((part, i) => 
+    return parts.map((part, i) =>
       regex.test(part) ? <mark key={i} className="highlight-text">{part}</mark> : part
     );
   };
@@ -115,8 +188,8 @@ function App() {
       <div className="chat-window">
         {messages.map((msg, idx) => (
           <div key={idx} className={`message ${msg.role}`}>
-            <div className="message-text" style={{whiteSpace: 'pre-wrap'}}>
-              {msg.content}
+            <div className="message-text">
+              {msg.role === 'ai' ? renderMarkdown(msg.content) : msg.content}
             </div>
             
             {msg.results && msg.results.length > 0 && (
@@ -194,10 +267,10 @@ function App() {
                 value={settings.model} 
                 onChange={(e) => setSettings({...settings, model: e.target.value})}
               >
+                <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
+                <option value="gemini-3-flash-preview">Gemini 3 Flash (Preview)</option>
                 <option value="gemini-3.1-flash-lite-preview">Gemini 3.1 Flash Lite (Preview)</option>
-                <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
               </select>
             </div>
 

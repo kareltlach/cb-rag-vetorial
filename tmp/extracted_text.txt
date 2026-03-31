@@ -1,0 +1,785 @@
+--- PAGE 1 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+📘 Playbook de Prompts Essenciais 
+para Product Designers de Varejo 
+ 
+Sumário 
+1. Objetivo do playbook ........................................................................................................ 3 
+2. Como usar bem os prompts .............................................................................................. 3 
+Estrutura base de contexto ................................ ................................ ................................ .. 4 
+3. Prompts essenciais por etapa ........................................................................................... 5 
+A. Entendimento do problema ................................ ................................ ............................  5 
+1. Clarificar o problema .......................................................................................................... 5 
+2. Separar problema real de solução prematura ..................................................................... 5 
+3. Mapear oportunidades........................................................................................................ 6 
+B. Discovery e pesquisa ................................ ................................ ................................ ..... 7 
+4. Criar perguntas de discovery............................................................................................... 7 
+5. Montar roteiro de entrevista ................................................................................................ 7 
+6. Gerar plano de desk research ............................................................................................. 8 
+7. Sintetizar entrevistas .......................................................................................................... 8 
+C. Hipóteses e experimentação ................................ ................................ ..........................  9 
+8. Escrever hipóteses de design .............................................................................................. 9 
+9. Escolher método de validação ............................................................................................ 9 
+10. Criar experimento de baixa fidelidade ............................................................................. 10 
+D. Jornada, fluxo e arquitetura ................................ ................................ ...........................  11 
+11. Mapear jornada do cliente .............................................................................................. 11 
+12. Desenhar fluxo ideal ....................................................................................................... 11 
+13. Identificar edge cases ..................................................................................................... 12 
+E. Priorização e tomada de decisão ................................ ................................ ...................  13 
+14. Priorizar problemas ......................................................................................................... 13 
+15. Avaliar impacto x esforço ................................ ................................ ............................  13 
+Prompt ................................................................................................................................. 13 
+16. Defender uma recomendação de design......................................................................... 14 
+F . UX Writing e conteúdo ................................ ................................ ................................ .. 15 
+17. Melhorar microcopy ........................................................................................................ 15 
+18. Criar mensagens de erro ................................................................................................. 15 
+19. Criar conteúdo para onboarding ..................................................................................... 16 
+G. Avaliação de interface e solução ................................ ................................ ...................  17 
+20. Fazer crítica heurística .................................................................................................... 17 
+21. Comparar duas soluções ................................................................................................ 17 
+22. Revisão crítica de tela ..................................................................................................... 18 
+H. Métricas e leitura de resultado ................................ ................................ ......................  19 
+23. Definir métricas de sucesso ............................................................................................ 19 
+24. Interpretar resultado de teste .......................................................................................... 19 
+25. Traduzir insight em ação ................................................................................................. 20 
+I. Alinhamento com PM, tech e negócio ................................ ................................ .............  21 
+26. Traduzir design para negócio ........................................................................................... 21 
+--- PAGE 2 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+27. Traduzir design para tecnologia ....................................................................................... 21 
+28. Preparar argumento para alinhamento com stakeholders ............................................... 22 
+J. Handoff e documentação ................................ ................................ ..............................  23 
+29. Criar documentação de handoff ..................................................................................... 23 
+30. Criar checklist pré-desenvolvimento............................................................................... 23 
+31. Resumir decisão de design ............................................................................................. 24 
+4. Exemplos de Prompts específicos para varejo ................................................................. 25 
+32. Melhorar experiência de PDP .......................................................................................... 25 
+33. Melhorar checkout .......................................................................................................... 25 
+34. Omnicanalidade ............................................................................................................. 26 
+35. Promoções e campanhas ............................................................................................... 26 
+36. Marketplace e seller experience ...................................................................................... 27 
+5. Prompt mestre para Product Designer de varejo .............................................................. 28 
+Prompt Mestre ...................................................................................................................... 28 
+6. Boas práticas para extrair respostas melhores ................................................................. 29 
+7. Como transformar isso em rotina .................................................................................... 29 
+ 
+  
+--- PAGE 3 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+1. Objetivo do playbook 
+Este playbook reúne prompts prontos para apoiar o Product Designer de varejo em 
+atividades como: 
+• entendimento de problema 
+• pesquisa e síntese 
+• definição de hipóteses 
+• desenho de fluxos 
+• priorização 
+• escrita UX 
+• prototipação 
+• validação 
+• alinhamento com negócio e tecnologia 
+• documentação e handoff 
+A ideia é usar a IA como copiloto de raciocínio, não só como geradora de texto. 
+ 
+2. Como usar bem os prompts 
+Antes de usar qualquer prompt, alimente a IA com o máximo de contexto possível: 
+• objetivo do produto ou iniciativa 
+• perfil do cliente 
+• contexto do varejo 
+• jornada atual 
+• dores do usuário 
+• restrições técnicas ou operacionais 
+• metas de negócio 
+• canal envolvido: app, site, loja, vendedor, marketplace, atendimento, 
+pagamento etc. 
+  
+--- PAGE 4 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+Estrutura base de contexto 
+Use este bloco antes de qualquer prompt: 
+Contexto  
+• Produto/fluxo: 
+• Canal: 
+• Público: 
+• Objetivo de negócio: 
+• Problema atual: 
+• Dores do usuário: 
+• Restrições: 
+• Dados disponíveis: 
+• O que espero como saída: 
+ 
+ 
+ 
+  
+--- PAGE 5 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+3. Prompts essenciais por etapa 
+ 
+A. Entendimento do problema 
+1. Clarificar o problema 
+Prompt 
+Atue como um Product Designer sênior com experiência em varejo 
+omnicanal. Com base no contexto abaixo, me ajude a transformar 
+uma demanda vaga em um problema de design claro. 
+Quero que você estruture a resposta em: 
+1. problema central 
+2. sintomas observáveis 
+3. possíveis causas 
+4. impacto para o usuário 
+5. impacto para o negócio 
+6. perguntas que ainda precisam ser respondidas 
+Contexto: [colar contexto] 
+ 
+2. Separar problema real de solução prematura 
+Prompt 
+Analise o contexto abaixo e me diga se estamos discutindo um 
+problema real ou pulando direto para uma solução. 
+Organize a resposta em: 
+• qual parece ser o problema 
+• qual solução já está sendo assumida 
+• riscos dessa abordagem 
+• como reformular a discussão para focar no problema 
+Contexto: [colar contexto] 
+ 
+  
+--- PAGE 6 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+3. Mapear oportunidades 
+Prompt 
+A partir do contexto abaixo, identifique oportunidades de 
+melhoria na experiência do cliente em um cenário de varejo. 
+Classifique as oportunidades em: 
+• reduzir fricção 
+• aumentar conversão 
+• aumentar confiança 
+• reduzir abandono 
+• melhorar eficiência operacional 
+• gerar valor percebido 
+Contexto: [colar contexto] 
+ 
+  
+--- PAGE 7 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+B. Discovery e pesquisa 
+4. Criar perguntas de discovery 
+Prompt 
+Gere perguntas de discovery para entender melhor o problema 
+abaixo em um contexto de varejo. 
+Separe as perguntas por: 
+• comportamento do cliente 
+• contexto de uso 
+• dores e frustrações 
+• expectativas 
+• barreiras de decisão 
+• impactos no negócio 
+Contexto: [colar contexto] 
+ 
+5. Montar roteiro de entrevista 
+Prompt 
+Crie um roteiro de entrevista em profundidade para validar o 
+problema descrito abaixo. 
+Estruture em: 
+• introdução 
+• perguntas de contexto 
+• perguntas de comportamento passado 
+• exploração da dor 
+• percepção de valor 
+• encerramento 
+Evite perguntas enviesadas e priorize perguntas abertas. 
+ 
+Contexto: [colar contexto] 
+ 
+  
+--- PAGE 8 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+6. Gerar plano de desk research 
+Prompt 
+Monte um plano de desk research para o tema abaixo. 
+Quero: 
+• objetivos da pesquisa 
+• principais perguntas a responder 
+• quais benchmarks analisar 
+• quais tendências observar 
+• quais sinais procurar em concorrentes 
+• quais insights poderiam influenciar o design 
+Contexto: [colar contexto] 
+ 
+7. Sintetizar entrevistas 
+Prompt 
+Vou colar anotações de entrevistas. Quero que você sintetize o 
+conteúdo e organize em: 
+• padrões recorrentes 
+• dores principais 
+• necessidades latentes 
+• falas representativas resumidas 
+• oportunidades de design 
+• riscos de interpretação 
+Aqui estão as anotações: [colar conteúdo] 
+  
+--- PAGE 9 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+C. Hipóteses e experimentação 
+8. Escrever hipóteses de design 
+Prompt 
+Com base no contexto abaixo, gere hipóteses de design no 
+formato: 
+“Acreditamos que [mudança/proposta] para [público] vai gerar 
+[resultado esperado], porque [racional]. Saberemos que isso é 
+verdade quando [métrica/sinal].” 
+Traga 5 hipóteses com níveis diferentes de impacto e 
+complexidade. 
+Contexto: [colar contexto] 
+ 
+9. Escolher método de validação 
+Prompt 
+Para cada hipótese abaixo, recomende o melhor método de 
+validação. 
+Considere opções como: 
+• teste de usabilidade 
+• entrevista 
+• protótipo navegável 
+• teste A/B 
+• fake door 
+• concierge 
+• wizard of oz 
+• análise de dados 
+• piloto operacional 
+Para cada hipótese, explique: 
+• por que esse método é adequado 
+• custo/esforço 
+• velocidade 
+• risco 
+• evidência esperada 
+Hipóteses: [colar hipóteses] 
+ 
+  
+--- PAGE 10 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+10. Criar experimento de baixa fidelidade 
+Prompt 
+Desenhe um experimento simples e rápido para validar a hipótese 
+abaixo, com baixo custo e baixa dependência técnica. 
+Estruture em: 
+• objetivo 
+• hipótese 
+• método 
+• público-alvo 
+• roteiro 
+• critério de sucesso 
+• riscos 
+• próximos passos dependendo do resultado 
+Hipótese: [colar hipótese] 
+ 
+  
+--- PAGE 11 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+D. Jornada, fluxo e arquitetura 
+11. Mapear jornada do cliente 
+Prompt 
+Crie uma jornada do cliente para o cenário abaixo em contexto de 
+varejo. 
+Estruture em tabela com: 
+• etapa 
+• objetivo do cliente 
+• ação 
+• emoção 
+• dor/fricção 
+• oportunidade de melhoria 
+Contexto: [colar contexto] 
+ 
+12. Desenhar fluxo ideal 
+Prompt 
+A partir do problema descrito abaixo, proponha um fluxo ideal de 
+experiência. 
+Estruture em: 
+• entrada no fluxo 
+• etapas principais 
+• decisões 
+• exceções 
+• mensagens críticas 
+• pontos de confiança 
+• pontos de abandono 
+• oportunidades de simplificação 
+Contexto: [colar contexto] 
+ 
+  
+--- PAGE 12 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+13. Identificar edge cases 
+Prompt 
+Analise o fluxo abaixo e identifique edge cases relevantes para 
+varejo. 
+Considere: 
+• indisponibilidade de estoque 
+• erro de pagamento 
+• cupom inválido 
+• troca de canal 
+• usuário não logado 
+• falha sistêmica 
+• dados inconsistentes 
+• regras promocionais conflitantes 
+Fluxo: [colar fluxo] 
+ 
+  
+--- PAGE 13 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+E. Priorização e tomada de decisão 
+14. Priorizar problemas 
+Prompt 
+Com base no contexto abaixo, priorize os problemas identificados 
+usando os critérios: 
+• impacto para o usuário 
+• impacto para o negócio 
+• frequência 
+• urgência 
+• esforço estimado 
+• risco operacional 
+No final, monte uma recomendação do que atacar primeiro e por 
+quê. 
+Contexto: [colar contexto] 
+ 
+15. Avaliar impacto x esforço 
+Prompt 
+Organize as oportunidades abaixo em uma matriz impacto x 
+esforço. 
+Classifique em: 
+• quick wins 
+• apostas estratégicas 
+• melhorias incrementais 
+• baixa prioridade 
+Oportunidades: [colar lista] 
+ 
+  
+--- PAGE 14 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+16. Defender uma recomendação de design 
+Prompt 
+Atue como um Product Designer sênior defendendo uma recomendação 
+em um contexto executivo. 
+Com base no cenário abaixo, escreva uma defesa clara da solução 
+proposta, conectando: 
+• problema 
+• evidências 
+• impacto no cliente 
+• impacto no negócio 
+• riscos 
+• por que essa é a melhor direção agora 
+Contexto: [colar contexto] 
+ 
+  
+--- PAGE 15 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+F . UX Writing e conteúdo 
+17. Melhorar microcopy 
+Prompt 
+Atue como UX Writer com foco em varejo digital. 
+Reescreva os textos abaixo para ficarem: 
+• claros 
+• objetivos 
+• humanos 
+• confiáveis 
+• orientados à ação 
+Me devolva 3 versões: 
+• neutra 
+• mais acolhedora 
+• mais direta 
+Textos: [colar textos] 
+ 
+18. Criar mensagens de erro 
+Prompt 
+Crie mensagens de erro para o cenário abaixo. 
+Quero mensagens que expliquem: 
+• o que aconteceu 
+• o que o usuário pode fazer agora 
+• como reduzir ansiedade 
+Contexto: [colar cenário] 
+ 
+  
+--- PAGE 16 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+19. Criar conteúdo para onboarding 
+Prompt 
+Gere uma proposta de onboarding para o fluxo abaixo. 
+Considere: 
+• o que o usuário precisa entender 
+• o que pode gerar insegurança 
+• o que deve ser dito sem excesso 
+• como comunicar valor rapidamente 
+Contexto: [colar contexto] 
+ 
+  
+--- PAGE 17 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+G. Avaliação de interface e solução 
+20. Fazer crítica heurística 
+Prompt 
+Avalie a solução abaixo com base em heurísticas de usabilidade. 
+Quero uma análise em: 
+• clareza 
+• consistência 
+• prevenção de erro 
+• feedback do sistema 
+• carga cognitiva 
+• acessibilidade 
+• confiança 
+Para cada ponto, indique: 
+• achado 
+• gravidade 
+• recomendação 
+Solução/descrição: [colar contexto] 
+ 
+21. Comparar duas soluções 
+Prompt 
+Compare as duas alternativas de solução abaixo como um Product 
+Designer de varejo. 
+Avalie cada uma em: 
+• clareza 
+• esforço do usuário 
+• potencial de conversão 
+• escalabilidade 
+• risco técnico 
+• aderência ao contexto operacional 
+Ao final, recomende uma direção. 
+Solução A: [colar] 
+Solução B: [colar] 
+  
+--- PAGE 18 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+22. Revisão crítica de tela 
+Prompt 
+Analise esta tela/descrição de interface como um revisor de 
+design. 
+Identifique: 
+• pontos fortes 
+• ambiguidades 
+• excesso de informação 
+• problemas de hierarquia 
+• possíveis dúvidas do usuário 
+• melhorias prioritárias 
+Tela/contexto: [colar] 
+ 
+  
+--- PAGE 19 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+H. Métricas e leitura de resultado 
+23. Definir métricas de sucesso 
+Prompt 
+A partir da iniciativa abaixo, defina métricas de sucesso para 
+design. 
+Separe em: 
+• métricas de comportamento 
+• métricas de conversão 
+• métricas de eficiência 
+• métricas de percepção/confiança 
+• sinais qualitativos 
+Contexto: [colar contexto] 
+ 
+24. Interpretar resultado de teste 
+Prompt 
+Me ajude a interpretar os resultados abaixo sem tirar conclusões 
+precipitadas. 
+Organize em: 
+• o que os dados sugerem 
+• o que ainda não podemos afirmar 
+• possíveis vieses 
+• perguntas adicionais 
+• recomendação de próximos passos 
+Dados: [colar dados] 
+ 
+  
+--- PAGE 20 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+25. Traduzir insight em ação 
+Prompt 
+A partir dos insights abaixo, transforme aprendizados em ações 
+práticas de produto e design. 
+Organize em: 
+• insight 
+• implicação 
+• ação recomendada 
+• prioridade 
+• evidência complementar necessária 
+Insights: [colar] 
+  
+--- PAGE 21 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+I. Alinhamento com PM, tech e negócio 
+26. Traduzir design para negócio 
+Prompt 
+Reescreva esta proposta de design em linguagem de negócio, 
+destacando: 
+• problema que resolve 
+• impacto esperado 
+• risco mitigado 
+• ganho operacional 
+• oportunidade de receita/conversão 
+Proposta: [colar] 
+ 
+27. Traduzir design para tecnologia 
+Prompt 
+Transforme a proposta abaixo em uma especificação funcional 
+inicial para discussão com tecnologia. 
+Inclua: 
+• objetivo 
+• comportamento esperado 
+• regras de negócio percebidas 
+• dependências 
+• dúvidas em aberto 
+• edge cases 
+Proposta: [colar] 
+ 
+  
+--- PAGE 22 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+28. Preparar argumento para alinhamento com stakeholders 
+Prompt 
+Monte um discurso claro para apresentar esta iniciativa para 
+stakeholders de produto, negócio e tecnologia. 
+Estruture em: 
+• contexto 
+• problema 
+• evidências 
+• proposta 
+• valor esperado 
+• risco de não fazer 
+Contexto: [colar] 
+ 
+  
+--- PAGE 23 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+J. Handoff e documentação 
+29. Criar documentação de handoff 
+Prompt 
+Me ajude a estruturar um handoff claro para desenvolvimento com 
+base na solução abaixo. 
+Quero os tópicos: 
+• objetivo da feature 
+• visão geral do fluxo 
+• regras principais 
+• comportamentos por estado 
+• mensagens e feedbacks 
+• exceções 
+• dúvidas para alinhamento 
+Solução: [colar] 
+ 
+30. Criar checklist pré-desenvolvimento 
+Prompt 
+Gere um checklist de prontidão para garantir que essa solução 
+esteja madura antes do desenvolvimento. 
+Considere: 
+• clareza do fluxo 
+• regras de negócio 
+• estados vazios 
+• erros 
+• responsividade 
+• acessibilidade 
+• conteúdo 
+• métricas 
+• dependências 
+Contexto: [colar] 
+ 
+  
+--- PAGE 24 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+31. Resumir decisão de design 
+Prompt 
+Escreva um resumo executivo da decisão de design abaixo para 
+registrar no histórico do projeto. 
+Estruture em: 
+• contexto 
+• problema 
+• alternativas consideradas 
+• decisão tomada 
+• racional 
+• impacto esperado 
+• pendências 
+Contexto: [colar] 
+ 
+  
+--- PAGE 25 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+4. Exemplos de Prompts específicos para varejo 
+32. Melhorar experiência de PDP 
+Prompt 
+Atue como especialista em e-commerce e varejo. 
+Analise uma página de produto com foco em: 
+• clareza de oferta 
+• confiança 
+• atributos decisórios 
+• preço e promoções 
+• prazo e entrega 
+• disponibilidade 
+• incentivo à conversão 
+Ao final, liste melhorias priorizadas. 
+Contexto: [colar] 
+ 
+33. Melhorar checkout 
+Prompt 
+Analise o fluxo de checkout abaixo e identifique oportunidades 
+para reduzir abandono. 
+Considere: 
+• fricção 
+• transparência de custos 
+• confiança no pagamento 
+• clareza de etapas 
+• erro de preenchimento 
+• excesso de campos 
+• dúvidas sobre entrega 
+Contexto: [colar] 
+  
+--- PAGE 26 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+34. Omnicanalidade 
+Prompt 
+Analise este fluxo considerando uma jornada omnicanal de varejo. 
+Identifique rupturas entre canais e oportunidades de 
+continuidade entre: 
+• app 
+• site 
+• loja física 
+• atendimento 
+• vendedor 
+• retirada/entrega 
+Contexto: [colar] 
+ 
+35. Promoções e campanhas 
+Prompt 
+Me ajude a avaliar a experiência de uma campanha promocional no 
+varejo. 
+Quero identificar: 
+• clareza da oferta 
+• entendimento das regras 
+• risco de frustração 
+• aderência à expectativa criada 
+• impacto potencial na conversão 
+Contexto: [colar] 
+ 
+  
+--- PAGE 27 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+36. Marketplace e seller experience 
+Prompt 
+Analise este fluxo com foco em marketplace. 
+Considere: 
+• diferença entre venda própria e seller 
+• confiança 
+• prazo 
+• frete 
+• trocas e devoluções 
+• percepção de qualidade 
+• complexidade operacional 
+Contexto: [colar] 
+ 
+  
+--- PAGE 28 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+5. Prompt mestre para Product Designer de varejo 
+Prompt Mestre 
+Use este quando quiser uma resposta mais completa. 
+Prompt 
+Atue como um Principal Product Designer especializado em varejo, 
+e-commerce e experiências omnicanal. 
+Quero que você me ajude a analisar o cenário abaixo com 
+profundidade e objetividade. 
+Sua resposta deve conter: 
+1. definição clara do problema 
+2. impacto para o usuário 
+3. impacto para o negócio 
+4. hipóteses principais 
+5. oportunidades de design 
+6. riscos e edge cases 
+7. recomendação de fluxo/solução 
+8. melhor método de validação 
+9. métricas de sucesso 
+10. próximos passos práticos 
+Considere o contexto de varejo, operação omnicanal, regras 
+promocionais, confiança, conversão e eficiência operacional. 
+Contexto: [colar contexto] 
+ 
+  
+--- PAGE 29 ---
+ 
+PLAYBOOK DE PROMPTS ESSENCIAIS DESIGNOPS Q1-2026  
+ 
+6. Boas práticas para extrair respostas melhores 
+Para ter respostas realmente úteis, acrescente comandos como: 
+• “Não seja genérico.” 
+• “Traga exemplos concretos.” 
+• “Considere restrições reais de operação.” 
+• “Aponte riscos e trade-offs.” 
+• “Me devolva em formato executivo.” 
+• “Priorize o que tem maior impacto e menor esforço.” 
+• “Pense como designer, mas conecte com negócio e tecnologia.” 
+• “Evite propor soluções sem evidência.” 
+ 
+7. Como transformar isso em rotina 
+Você pode usar esse playbook no seu dia a dia: 
+Antes da reunião 
+para organizar pensamento e chegar com visão mais estratégica. 
+Durante discovery 
+para criar perguntas, hipóteses e critérios de validação. 
+Durante o desenho 
+para revisar fluxo, edge cases, conteúdo e clareza. 
+Antes do handoff 
+para identificar lacunas e melhorar documentação. 
+Depois de testes ou dados 
+para sintetizar aprendizados e decidir próximos passos. 
+ 
+#DesignOps #2026 
+ 
