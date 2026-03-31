@@ -108,6 +108,30 @@ class ChatResponse(BaseModel):
     sources: List[SearchResult]
 
 
+@app.get("/api/documents")
+async def list_documents():
+    """Lista todos os documentos disponíveis para análise na pasta /data no Vercel"""
+    docs = []
+    # No Vercel, o caminho pode ser relativo à raiz do app
+    base_dir = os.path.join(os.getcwd(), "data")
+    if not os.path.exists(base_dir):
+        # Se falhar, tenta apenas "data"
+        base_dir = "data"
+        if not os.path.exists(base_dir):
+            return []
+        
+    for root, dirs, files in os.walk(base_dir):
+        for file in files:
+            ext = file.lower().split('.')[-1]
+            if ext in ['pdf', 'png', 'jpg', 'jpeg', 'mp4', 'mov', 'webm']:
+                rel_path = os.path.relpath(os.path.join(root, file), base_dir).replace('\\', '/')
+                docs.append({
+                    "name": file,
+                    "type": ext,
+                    "path": rel_path
+                })
+    return docs
+
 @app.get("/api")
 async def root():
     return {"message": "RAG Multimodal Agent API is running"}
