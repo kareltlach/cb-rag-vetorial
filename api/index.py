@@ -43,31 +43,33 @@ TRECHOS DE DOCUMENTOS:
 ---
 """
 
-def get_pinecone_index():
-    api_key = os.environ.get("PINECONE_API_KEY")
-    if not api_key:
-        print("ALERTA: PINECONE_API_KEY não configurada!")
-        return None
-    try:
+# ───────────────────────────────────────────────────────────────────────────────
+# Inicialização LAZY — clientes criados apenas na primeira requisição,
+# não no cold start (evita FUNCTION_INVOCATION_FAILED)
+# ───────────────────────────────────────────────────────────────────────────────
+_index = None
+_client = None
+
+def get_index():
+    global _index
+    if _index is None:
+        api_key = os.environ.get("PINECONE_API_KEY")
+        if not api_key:
+            raise RuntimeError("PINECONE_API_KEY não configurada nas variáveis de ambiente do Vercel.")
         pc = Pinecone(api_key=api_key)
-        return pc.Index(INDEX_NAME)
-    except Exception as e:
-        print(f"Erro ao inicializar Pinecone: {e}")
-        return None
+        _index = pc.Index(INDEX_NAME)
+    return _index
 
-def get_gemini_client():
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        print("ALERTA: GEMINI_API_KEY não configurada!")
-        return None
-    try:
-        return genai.Client(api_key=api_key)
-    except Exception as e:
-        print(f"Erro ao inicializar Gemini: {e}")
-        return None
+def get_client():
+    global _client
+    if _client is None:
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY não configurada nas variáveis de ambiente do Vercel.")
+        _client = genai.Client(api_key=api_key)
+    return _client
 
-index = get_pinecone_index()
-client = get_gemini_client()
+# ───────────────────────────────────────────────────────────────────────────────
 
 def is_rate_limit_error(exception):
     return "429" in str(exception) or "RESOURCE_EXHAUSTED" in str(exception)
@@ -78,12 +80,7 @@ def is_rate_limit_error(exception):
     retry=retry_if_exception_type(Exception)
 )
 def safe_embed_content(client, model, contents):
-    try:
-        return client.models.embed_content(model=model, contents=contents)
-    except Exception as e:
-        if is_rate_limit_error(e):
-            print(f"Limite de cota atingido na incorporação. Tentando novamente...")
-        raise e
+    return client.models.embed_content(model=model, contents=contents)
 
 @retry(
     stop=stop_after_attempt(3),
@@ -91,12 +88,8 @@ def safe_embed_content(client, model, contents):
     retry=retry_if_exception_type(Exception)
 )
 def safe_generate_content(client, model, contents, config):
-    try:
-        return client.models.generate_content(model=model, contents=contents, config=config)
-    except Exception as e:
-        if is_rate_limit_error(e):
-            print(f"Limite de cota atingido na geração. Tentando novamente...")
-        raise e
+    return client.models.generate_content(model=model, contents=contents, config=config)
+
 
 class SearchQuery(BaseModel):
     query: str
@@ -113,55 +106,61 @@ class ChatResponse(BaseModel):
     answer: str
     sources: List[SearchResult]
 
+
 @app.get("/api")
 async def root():
     return {"message": "RAG Multimodal Agent API is running"}
 
 @app.post("/api/search", response_model=ChatResponse)
 async def search(search_query: SearchQuery):
-    active_client = client
+    # Determinar cliente e modelo para esta requisição
     active_model = search_query.model if search_query.model else GENERATIVE_MODEL
 
-    if search_query.gemini_api_key:
-        try:
+    try:
+        if search_query.gemini_api_key:
+            # Chave customizada do usuário
             active_client = genai.Client(api_key=search_query.gemini_api_key)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Erro ao inicializar cliente com sua chave Custom: {str(e)}")
+        else:
+            # Chave padrão do servidor (lazy)
+            active_client = get_client()
 
-    if not active_client or not index:
-        raise HTTPException(status_code=503, detail="Serviços de IA (Gemini/Pinecone) não estão inicializados. Configure as variáveis de ambiente no Vercel.")
+        active_index = get_index()
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao inicializar serviços: {str(e)}")
 
     try:
+        # 1. Embedding da query
         formatted_query = f"task: search result | query: {search_query.query}"
-        
         embed_response = safe_embed_content(
             client=active_client,
             model=EMBEDDING_MODEL,
             contents=formatted_query
         )
         query_vector = embed_response.embeddings[0].values
-        
-        results = index.query(
+
+        # 2. Busca no Pinecone
+        results = active_index.query(
             vector=query_vector,
             top_k=search_query.top_k,
             include_metadata=True
         )
-        
+
+        # 3. Consolidar contexto
         context_text = ""
         formatted_results = []
         for match in results.matches:
             text = match.metadata.get("text_content", "")
             context_text += f"\n- {text}\n"
-            
-            metadata = match.metadata
             formatted_results.append(SearchResult(
                 id=match.id,
                 score=match.score,
-                metadata=metadata
+                metadata=match.metadata
             ))
-        
+
+        # 4. Gerar resposta com o LLM
         prompt = SYSTEM_PROMPT.format(context=context_text)
-        
         gen_response = safe_generate_content(
             client=active_client,
             model=active_model,
@@ -171,20 +170,21 @@ async def search(search_query: SearchQuery):
                 temperature=0.3
             )
         )
-        
+
         ai_answer = gen_response.text if gen_response.text else "Não consegui gerar uma resposta agora."
-            
-        return ChatResponse(
-            answer=ai_answer,
-            sources=formatted_results
-        )
+
+        return ChatResponse(answer=ai_answer, sources=formatted_results)
+
     except Exception as e:
         error_msg = str(e)
-        print(f"ERRO CRÍTICO NO BACKEND: {error_msg}")
-        
+        print(f"ERRO NO BACKEND: {error_msg}")
+
         if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-            raise HTTPException(status_code=429, detail="A cota do Google Gemini foi atingida. Aguarde e tente novamente.")
-        
+            raise HTTPException(
+                status_code=429,
+                detail="A cota do Google Gemini foi atingida. Aguarde e tente novamente."
+            )
+
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Erro interno: {error_msg}")
