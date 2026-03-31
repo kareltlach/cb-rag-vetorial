@@ -1,6 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react'
 import './index.css'
 
+// URL base da API — Vite proxy redireciona /api no dev, Vercel serverless em produção
+const API_BASE = ''
+
 function App() {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState([
@@ -61,7 +64,7 @@ function App() {
     setIsLoading(true)
 
     try {
-      const response = await fetch('http://localhost:8000/search', {
+      const response = await fetch(`${API_BASE}/api/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
