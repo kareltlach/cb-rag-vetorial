@@ -25,6 +25,8 @@ import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner';
 import { cn } from './lib/utils';
 
+const API_BASE = window.location.origin.includes('localhost') ? 'http://localhost:8001' : '';
+
 export default function Auth({ initialEmail = '' }) {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState(initialEmail);
@@ -49,7 +51,7 @@ export default function Auth({ initialEmail = '' }) {
       toast.success("Credenciais validadas. Iniciando handshake MFA...");
       
       // Envia OTP via Telegram
-      const otpRes = await fetch('http://localhost:8001/api/auth/otp/send', {
+      const otpRes = await fetch(`${API_BASE}/api/auth/otp/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
@@ -87,7 +89,7 @@ export default function Auth({ initialEmail = '' }) {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8001/api/auth/otp/verify', {
+      const res = await fetch(`${API_BASE}/api/auth/otp/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, code: otpCode })
