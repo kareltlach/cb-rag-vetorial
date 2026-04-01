@@ -40,8 +40,8 @@ const PromptCodeBlock = ({ inner, blockKey, isWordWrap, setIsWordWrap, copyToCli
 
     // Marcar visualização
     updateStat(inner.trim(), 'views')
-      .then(success => {
-        if (success) setStats(prev => ({ ...prev, views: prev.views + 1 }))
+      .then(data => {
+        if (data) setStats(data)
       })
   }, [])
 
@@ -59,14 +59,22 @@ const PromptCodeBlock = ({ inner, blockKey, isWordWrap, setIsWordWrap, copyToCli
           </button>
           <button
             className="share-teams-btn"
-            onClick={() => shareToTeams(inner.trim())}
+            onClick={async () => {
+              const newStats = await updateStat(inner.trim(), 'shares')
+              if (newStats) setStats(newStats)
+              shareToTeams(inner.trim())
+            }}
             title="Compartilhar no Microsoft Teams"
           >
             Teams
           </button>
           <button
             className={`copy-btn ${copiedIdx[blockKey] ? 'copied' : ''}`}
-            onClick={() => copyToClipboard(inner.trim(), blockKey)}
+            onClick={async () => {
+              const newStats = await updateStat(inner.trim(), 'copies')
+              if (newStats) setStats(newStats)
+              copyToClipboard(inner.trim(), blockKey)
+            }}
           >
             {copiedIdx[blockKey] ? '✓ Copiado!' : 'Copiar Prompt'}
           </button>
@@ -196,10 +204,19 @@ function App() {
   const [trending, setTrending] = useState([])
   const chatEndRef = useRef(null)
 
-  // ── Carregar lista de documentos e trending na inicialização ──────────────────────────
+  // ── Carregar lista de documentos e trending na inicialização e via Polling ──────────
   useEffect(() => {
     fetchDocuments()
     fetchTrending()
+
+    // Configura Polling para dados de documentos (60s) e tendências (30s)
+    const docInterval = setInterval(fetchDocuments, 60000)
+    const trendingInterval = setInterval(fetchTrending, 30000)
+
+    return () => {
+      clearInterval(docInterval)
+      clearInterval(trendingInterval)
+    }
   }, [])
 
   const fetchTrending = async () => {
@@ -231,7 +248,6 @@ function App() {
   const [copiedIdx, setCopiedIdx] = useState({})
 
   const copyToClipboard = (text, key) => {
-    updateStat(text, 'copies')
     navigator.clipboard.writeText(text).then(() => {
       setCopiedIdx(prev => ({ ...prev, [key]: true }))
       setTimeout(() => setCopiedIdx(prev => ({ ...prev, [key]: false })), 2000)
@@ -239,7 +255,6 @@ function App() {
   }
 
   const shareToTeams = (text) => {
-    updateStat(text, 'shares')
     const encodedText = encodeURIComponent(text)
     const teamsUrl = `https://teams.microsoft.com/share?msgText=${encodedText}`
     window.open(teamsUrl, '_blank')
@@ -253,7 +268,9 @@ function App() {
         body: JSON.stringify({ prompt_id: getStatKey(text), type })
       })
       const result = await response.json()
-      return result.status === 'success'
+      // Atualiza o trending imediatamente para refletir a ação na sidebar
+      fetchTrending()
+      return result
     } catch (err) {
       console.error('Erro ao salvar stat:', err)
       return false
