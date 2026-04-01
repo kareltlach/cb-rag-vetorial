@@ -44,6 +44,7 @@ def sanitize_filename(filename: str) -> str:
 class SupabaseLite:
     def __init__(self, url, key):
         self.url = f"{url.rstrip('/')}/rest/v1"
+        self.storage_url = f"{url.rstrip('/')}/storage/v1"
         self.headers = {
             "apikey": key,
             "Authorization": f"Bearer {key}",
@@ -56,8 +57,12 @@ class SupabaseLite:
             return None
         try:
             async with httpx.AsyncClient() as client:
-                url = f"{self.url}/prompt_statistics?prompt_id=eq.{prompt_id}"
-                response = await client.get(url, headers=self.headers)
+                url = f"{self.url}/prompt_statistics"
+                params = {"prompt_id": f"eq.{prompt_id}"}
+                response = await client.get(url, headers=self.headers, params=params)
+                if response.is_error:
+                    print(f"Erro Supabase GET STATS ({response.status_code}): {response.text}")
+                    return None
                 data = response.json()
                 return data[0] if data else None
         except Exception as e:
@@ -68,8 +73,12 @@ class SupabaseLite:
     async def get_otp_status(self, email):
         try:
             async with httpx.AsyncClient() as client:
-                url = f"{self.url}/telegr_auth?email=eq.{email}"
-                response = await client.get(url, headers=self.headers)
+                url = f"{self.url}/telegr_auth"
+                params = {"email": f"eq.{email}"}
+                response = await client.get(url, headers=self.headers, params=params)
+                if response.is_error:
+                    print(f"Erro Supabase GET OTP ({response.status_code}): {response.text}")
+                    return None
                 data = response.json()
                 return data[0] if data else None
         except Exception as e:
@@ -87,11 +96,13 @@ class SupabaseLite:
                     "is_verified": False
                 }
                 if current:
-                    url = f"{self.url}/telegr_auth?email=eq.{email}"
-                    await client.patch(url, headers=self.headers, json={"otp_code": str(otp), "chat_id": int(chat_id), "is_verified": False})
+                    url = f"{self.url}/telegr_auth"
+                    params = {"email": f"eq.{email}"}
+                    res = await client.patch(url, headers=self.headers, params=params, json={"otp_code": str(otp), "chat_id": int(chat_id), "is_verified": False})
+                    return not res.is_error
                 else:
-                    await client.post(f"{self.url}/telegr_auth", headers=self.headers, json=payload)
-                return True
+                    res = await client.post(f"{self.url}/telegr_auth", headers=self.headers, json=payload)
+                    return not res.is_error
         except Exception as e:
             print(f"Erro Supabase SAVE OTP: {e}")
             return False
@@ -99,13 +110,15 @@ class SupabaseLite:
     async def verify_otp(self, email, otp):
         try:
             async with httpx.AsyncClient() as client:
-                url = f"{self.url}/telegr_auth?email=eq.{email}&otp_code=eq.{otp}"
-                response = await client.get(url, headers=self.headers)
+                url = f"{self.url}/telegr_auth"
+                params = {"email": f"eq.{email}", "otp_code": f"eq.{otp}"}
+                response = await client.get(url, headers=self.headers, params=params)
                 data = response.json()
                 if data:
-                    patch_url = f"{self.url}/telegr_auth?email=eq.{email}"
-                    await client.patch(patch_url, headers=self.headers, json={"is_verified": True})
-                    return True
+                    patch_url = f"{self.url}/telegr_auth"
+                    patch_params = {"email": f"eq.{email}"}
+                    res = await client.patch(patch_url, headers=self.headers, params=patch_params, json={"is_verified": True})
+                    return not res.is_error
                 return False
         except Exception as e:
             print(f"Erro Supabase VERIFY OTP: {e}")
@@ -119,7 +132,6 @@ class SupabaseLite:
             current = await self.get_stats(prompt_id)
             async with httpx.AsyncClient() as client:
                 if not current:
-                    # Se não existe, cria o registro inicial
                     payload = {
                         "prompt_id": prompt_id,
                         "prompt_text": prompt_text if prompt_text else prompt_id,
@@ -129,17 +141,16 @@ class SupabaseLite:
                     }
                     await client.post(f"{self.url}/prompt_statistics", headers=self.headers, json=payload)
                 else:
-                    # Se existe, incrementa o valor atual
                     new_val = current.get(stat_type, 0) + 1
                     payload = {stat_type: new_val}
-                    # Se não tem o texto ou estamos passando um novo, atualiza
                     if prompt_text:
                         payload["prompt_text"] = prompt_text
                     elif not current.get("prompt_text"):
                         payload["prompt_text"] = prompt_id
                     
-                    url = f"{self.url}/prompt_statistics?prompt_id=eq.{prompt_id}"
-                    await client.patch(url, headers=self.headers, json=payload)
+                    url = f"{self.url}/prompt_statistics"
+                    params = {"prompt_id": f"eq.{prompt_id}"}
+                    await client.patch(url, headers=self.headers, params=params, json=payload)
                 
                 return await self.get_stats(prompt_id)
         except Exception as e:
@@ -151,10 +162,16 @@ class SupabaseLite:
             return []
         try:
             async with httpx.AsyncClient() as client:
-                # Filtra prompts que tenham ao menos 1 visualização, cópia ou compartilhamento
-                # E ordena por visualizações descendente
-                url = f"{self.url}/prompt_statistics?or=(views.gt.0,copies.gt.0,shares.gt.0)&order=views.desc&limit={limit}"
-                response = await client.get(url, headers=self.headers)
+                url = f"{self.url}/prompt_statistics"
+                params = {
+                    "or": "(views.gt.0,copies.gt.0,shares.gt.0)",
+                    "order": "views.desc",
+                    "limit": limit
+                }
+                response = await client.get(url, headers=self.headers, params=params)
+                if response.is_error:
+                    print(f"Erro Supabase TRENDING ({response.status_code}): {response.text}")
+                    return []
                 return response.json()
         except Exception as e:
             print(f"Erro Supabase Trending: {e}")
@@ -164,8 +181,12 @@ class SupabaseLite:
     async def db_list_documents(self):
         try:
             async with httpx.AsyncClient() as client:
-                url = f"{self.url}/documents?order=created_at.desc"
-                response = await client.get(url, headers=self.headers)
+                url = f"{self.url}/documents"
+                params = {"order": "created_at.desc"}
+                response = await client.get(url, headers=self.headers, params=params)
+                if response.is_error:
+                    print(f"Erro Supabase LIST DOCS ({response.status_code}): {response.text}")
+                    return []
                 return response.json()
         except Exception as e:
             print(f"Erro Supabase LIST DOCUMENTS: {e}")
@@ -180,7 +201,10 @@ class SupabaseLite:
                     "supabase_url": supabase_url,
                     "pinecone_indexed": False
                 }
-                await client.post(f"{self.url}/documents", headers=self.headers, json=payload)
+                res = await client.post(f"{self.url}/documents", headers=self.headers, json=payload)
+                if res.is_error:
+                    print(f"Erro Supabase DB REGISTER ({res.status_code}): {res.text}")
+                    return False
                 return True
         except Exception as e:
             print(f"Erro Supabase REGISTER DOCUMENT: {e}")
@@ -189,9 +213,10 @@ class SupabaseLite:
     async def db_mark_as_indexed(self, name):
         try:
             async with httpx.AsyncClient() as client:
-                url = f"{self.url}/documents?name=eq.{name}"
-                await client.patch(url, headers=self.headers, json={"pinecone_indexed": True})
-                return True
+                url = f"{self.url}/documents"
+                params = {"name": f"eq.{name}"}
+                res = await client.patch(url, headers=self.headers, params=params, json={"pinecone_indexed": True})
+                return not res.is_error
         except Exception as e:
             print(f"Erro Supabase MARK AS INDEXED: {e}")
             return False
@@ -199,29 +224,31 @@ class SupabaseLite:
     async def db_delete_document(self, name):
         try:
             async with httpx.AsyncClient() as client:
-                url = f"{self.url}/documents?name=eq.{name}"
-                await client.delete(url, headers=self.headers)
+                url = f"{self.url}/documents"
+                params = {"name": f"eq.{name}"}
+                print(f"DEBUG: Tentando deletar do DB: {url} com params {params}")
+                res = await client.delete(url, headers=self.headers, params=params)
+                if res.is_error:
+                    print(f"ERRO Supabase DB DELETE ({res.status_code}): {res.text}")
+                    return False
+                print(f"SUCESSO: Registro {name} removido do banco.")
                 return True
         except Exception as e:
-            print(f"Erro Supabase DELETE DOCUMENT DB: {e}")
+            print(f"Erro Supabase DELETE DOCUMENT DB Exception: {e}")
             return False
 
     # --- STORAGE HELPERS (via httpx to Supabase Storage API) ---
     async def storage_upload(self, bucket, path, file_content, content_type):
         from urllib.parse import quote
         try:
-            # Importante: O path (nome do arquivo) deve ser URL-encoded para o Supabase Storage
             safe_path = quote(path)
-            storage_url = f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/{bucket}/{safe_path}"
-            
+            storage_url = f"{self.storage_url}/object/{bucket}/{safe_path}"
             upload_headers = self.headers.copy()
             upload_headers["Content-Type"] = content_type
-            
             async with httpx.AsyncClient() as client:
                 res = await client.post(storage_url, headers=upload_headers, content=file_content)
                 if res.status_code in [200, 201]:
                     return f"{SUPABASE_URL}/storage/v1/object/public/{bucket}/{safe_path}"
-                
                 err_msg = f"HTTP {res.status_code}: {res.text}"
                 print(f"Erro Storage Upload: {err_msg}")
                 return {"error": err_msg}
@@ -234,12 +261,14 @@ class SupabaseLite:
         from urllib.parse import quote
         try:
             safe_path = quote(path)
-            storage_url = f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/{bucket}/{safe_path}"
+            storage_url = f"{self.storage_url}/object/{bucket}/{safe_path}"
+            print(f"DEBUG: Tentando deletar do Storage: {storage_url}")
             async with httpx.AsyncClient() as client:
                 res = await client.delete(storage_url, headers=self.headers)
-                if res.status_code == 200:
+                if res.status_code in [200, 204]:
+                    print(f"SUCESSO: Arquivo {path} removido do storage.")
                     return True
-                print(f"Erro Storage DELETE ({res.status_code}): {res.text}")
+                print(f"ERRO Supabase Storage DELETE ({res.status_code}): {res.text}")
                 return False
         except Exception as e:
             print(f"Erro Storage DELETE Exception: {e}")
@@ -352,38 +381,6 @@ async def process_and_index_file_internal(file_source: str, mod_type: str, file_
             os.remove(local_tmp_path)
 
 sb_lite = SupabaseLite(SUPABASE_URL, SUPABASE_ANON_KEY) if SUPABASE_URL and SUPABASE_ANON_KEY else None
-
-class LocalStatsStore:
-    def __init__(self, filename="stats.json"):
-        self.filename = filename
-        if not os.path.exists(self.filename):
-            with open(self.filename, 'w') as f:
-                json.dump({}, f)
-    
-    def get(self, prompt_id):
-        try:
-            with open(self.filename, 'r') as f:
-                data = json.load(f)
-            return data.get(prompt_id, {"views": 0, "copies": 0, "shares": 0})
-        except:
-            return {"views": 0, "copies": 0, "shares": 0}
-            
-    def increment(self, prompt_id, type, prompt_text=None):
-        try:
-            with open(self.filename, 'r') as f:
-                data = json.load(f)
-            if prompt_id not in data:
-                data[prompt_id] = {"views": 0, "copies": 0, "shares": 0, "prompt_text": prompt_text}
-            data[prompt_id][type] = data[prompt_id].get(type, 0) + 1
-            if prompt_text:
-                data[prompt_id]["prompt_text"] = prompt_text
-            with open(self.filename, 'w') as f:
-                json.dump(data, f)
-            return data[prompt_id]
-        except:
-            return {"views": 0, "copies": 0, "shares": 0}
-
-_local_stats = LocalStatsStore()
 
 app = FastAPI(title="RAG Multimodal API")
 
@@ -559,29 +556,27 @@ async def delete_document(filename: str):
             # Extrair o nome real do arquivo (storage key) da URL para remoção
             # Ex: https://.../public/rag-documents/Playbook_Test.pdf -> Playbook_Test.pdf
             storage_key = supabase_url.split('/')[-1]
-            # O link público pode estar codificado, precisamos decodificar o key
             from urllib.parse import unquote
             storage_path = unquote(storage_key)
             
             storage_success = await sb_lite.storage_delete("rag-documents", storage_path)
-            if storage_success:
-                print(f"SUCESSO [Storage]: Arquivo {storage_path} removido.")
         except Exception as storage_err:
             print(f"ALERTA [Storage]: Falha ao remover arquivo: {storage_err}")
+            storage_success = False
 
         # 4. Remover do Supabase Database (Limpa o estado na UI)
         db_success = await sb_lite.db_delete_document(file_name)
-        if not db_success:
-            print(f"ERRO [Database]: Não foi possível remover o registro de {file_name}.")
-            # Se falhou aqui, o arquivo pode reaparecer na UI após refresh
+
+        if not db_success and not storage_success:
+            raise HTTPException(status_code=500, detail="Falha em remover tanto do Storage quanto do Banco.")
 
         return {
             "status": "success", 
-            "message": f"Fonte '{file_name}' expurgada com sucesso dos ecossistemas ativos.",
+            "message": f"Fonte '{file_name}' expurgada com sucesso.",
             "details": {
-                "pinecone": "removed_or_skipped",
-                "storage": "attempted",
-                "database": "cleaned" if db_success else "failed"
+                "pinecone": "attempted",
+                "storage": "success" if storage_success else "failed",
+                "database": "success" if db_success else "failed"
             }
         }
         
@@ -700,29 +695,15 @@ async def search(search_query: SearchQuery):
 
 @app.get("/api/stats/trending")
 async def get_trending_stats():
-    # Tenta Supabase
-    if sb_lite:
-        data = await sb_lite.get_trending()
-        if data:
-            # Garanto que local e supabase estão sincronizados
-            return data
-    
-    # Fallback para local formatado como o trending do supabase
-    try:
-        with open("stats.json", 'r') as f:
-            data = json.load(f)
-        # Converte dicionário para lista de objetos sortidos por views
-        trending_list = []
-        for pid, stats in data.items():
-            # Filtra apenas quem tem alguma métrica > 0
-            if stats.get("views", 0) > 0 or stats.get("copies", 0) > 0 or stats.get("shares", 0) > 0:
-                trending_item = stats.copy()
-                trending_item["prompt_id"] = pid
-                trending_list.append(trending_item)
+    # Usa exclusivamente o Supabase para tendências em tempo real
+    if not sb_lite:
+        raise HTTPException(status_code=503, detail="Serviço de estatísticas (Supabase) não configurado.")
         
-        trending_list.sort(key=lambda x: x.get("views", 0), reverse=True)
-        return trending_list[:5]
-    except:
+    try:
+        data = await sb_lite.get_trending()
+        return data or []
+    except Exception as e:
+        print(f"Erro ao buscar tendências: {e}")
         return []
 
 @app.get("/api/stats/{prompt_id}")
@@ -731,8 +712,7 @@ async def get_prompt_stats(prompt_id: str):
         data = await sb_lite.get_stats(prompt_id)
         if data: return data
             
-    # Fallback para local
-    return _local_stats.get(prompt_id)
+    return {"views": 0, "copies": 0, "shares": 0}
 
 class StatIncrement(BaseModel):
     prompt_id: str
@@ -741,14 +721,14 @@ class StatIncrement(BaseModel):
 
 @app.post("/api/stats/increment")
 async def increment_stat(data: StatIncrement):
-    result = None
-    if sb_lite:
-        result = await sb_lite.increment_stat(data.prompt_id, data.type, data.text)
-
-    # Sempre atualiza o local também e usa como fallback
-    local_result = _local_stats.increment(data.prompt_id, data.type, data.text)
-    
-    return result if result else local_result
+    if not sb_lite:
+        raise HTTPException(status_code=503, detail="Serviço de estatísticas não disponível.")
+        
+    result = await sb_lite.increment_stat(data.prompt_id, data.type, data.text)
+    if not result:
+        raise HTTPException(status_code=500, detail="Falha ao incrementar estatística no banco de dados.")
+        
+    return result
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Rotas de Autenticação Telegram (OTP)
