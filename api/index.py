@@ -78,7 +78,7 @@ class SupabaseLite:
             current = await self.get_stats(prompt_id)
             async with httpx.AsyncClient() as client:
                 if not current:
-                    # Insert
+                    # Se não existe, cria o registro inicial
                     payload = {
                         "prompt_id": prompt_id,
                         "views": 1 if stat_type == "views" else 0,
@@ -87,7 +87,7 @@ class SupabaseLite:
                     }
                     await client.post(f"{self.url}/prompt_statistics", headers=self.headers, json=payload)
                 else:
-                    # Update
+                    # Se existe, incrementa o valor atual
                     new_val = current.get(stat_type, 0) + 1
                     payload = {stat_type: new_val}
                     url = f"{self.url}/prompt_statistics?prompt_id=eq.{prompt_id}"

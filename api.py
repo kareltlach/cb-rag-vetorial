@@ -53,11 +53,12 @@ class SupabaseLite:
 
     async def increment_stat(self, prompt_id, stat_type):
         if not SUPABASE_URL or not SUPABASE_ANON_KEY:
-            return False
+            return None
         try:
             current = await self.get_stats(prompt_id)
             async with httpx.AsyncClient() as client:
                 if not current:
+                    # Se não existe, cria o registro inicial
                     payload = {
                         "prompt_id": prompt_id,
                         "views": 1 if stat_type == "views" else 0,
@@ -65,10 +66,13 @@ class SupabaseLite:
                         "shares": 1 if stat_type == "shares" else 0
                     }
                     await client.post(f"{self.url}/prompt_statistics", headers=self.headers, json=payload)
+                else:
+                    # Se existe, incrementa o valor atual
+                    new_val = current.get(stat_type, 0) + 1
+                    payload = {stat_type: new_val}
                     url = f"{self.url}/prompt_statistics?prompt_id=eq.{prompt_id}"
-                    response = await client.patch(url, headers=self.headers, json=payload)
+                    await client.patch(url, headers=self.headers, json=payload)
                 
-                # Após o POST ou PATCH bem-sucedido, retorna o estado final
                 return await self.get_stats(prompt_id)
         except Exception as e:
             print(f"Erro Supabase Increment: {e}")
@@ -527,4 +531,4 @@ async def upload_file_endpoint(file: UploadFile = File(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="127.0.0.1", port=8001)

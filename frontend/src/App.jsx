@@ -236,25 +236,47 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024)
   const [isWordWrap, setIsWordWrap] = useState(true)
   const [trending, setTrending] = useState([])
-  const [isBackendOnline, setIsBackendOnline] = useState(true)
+  const [isBackendOnline, setIsBackendOnline] = useState(false)
   const chatEndRef = useRef(null)
 
   useEffect(() => {
     const checkStatus = async () => {
       try {
         const response = await fetch(`${API_BASE}/api`)
-        setIsBackendOnline(response.ok)
+        if (response.ok) {
+          setIsBackendOnline(true)
+          return true
+        }
       } catch (err) {
         setIsBackendOnline(false)
+        return false
+      }
+      return false
+    }
+
+    // Primeiro check de status antes de buscar dados
+    const initialCheck = async () => {
+      const isOnline = await checkStatus()
+      if (isOnline) {
+        fetchDocuments()
+        fetchTrending()
+      } else {
+        // Se ainda não estiver online, espera e tenta de novo em 3s
+        setTimeout(initialCheck, 3000)
       }
     }
 
-    checkStatus()
-    fetchDocuments()
-    fetchTrending()
+    // Pequeno delay inicial para evitar pings antes do backend estar minimamente pronto
+    const startAfterDelay = async () => {
+      await new Promise(r => setTimeout(r, 2000))
+      initialCheck()
+    }
+
+    startAfterDelay()
     
-    const docInterval = setInterval(fetchDocuments, 60000)
-    const trendingInterval = setInterval(fetchTrending, 30000)
+    // Intervalos regulares
+    const docInterval = setInterval(() => { if (isBackendOnline) fetchDocuments() }, 60000)
+    const trendingInterval = setInterval(() => { if (isBackendOnline) fetchTrending() }, 30000)
     const statusInterval = setInterval(checkStatus, 5000)
     
     return () => {
