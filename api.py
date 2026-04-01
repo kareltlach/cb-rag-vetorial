@@ -96,9 +96,7 @@ class SupabaseLite:
                     "is_verified": False
                 }
                 if current:
-                    url = f"{self.url}/telegr_auth"
-                    params = {"email": f"eq.{email}"}
-                    res = await client.patch(url, headers=self.headers, params=params, json={"otp_code": str(otp), "chat_id": int(chat_id), "is_verified": False})
+                    res = await client.patch(f"{self.url}/telegr_auth?email=eq.{urllib.parse.quote(email)}", headers=self.headers, json={"otp_code": str(otp), "chat_id": int(chat_id), "is_verified": False})
                     return not res.is_error
                 else:
                     res = await client.post(f"{self.url}/telegr_auth", headers=self.headers, json=payload)

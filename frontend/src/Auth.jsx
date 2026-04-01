@@ -271,7 +271,7 @@ export default function Auth({ initialEmail = '' }) {
                       <div className="p-4 bg-amber-500/5 rounded-2xl border border-amber-500/10 space-y-2">
                          <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Como obter o ID?</p>
                          <p className="text-[11px] text-foreground/40 font-bold leading-relaxed">
-                           Envie /start para o bot <span className="text-white">@userinfobot</span> no Telegram para visualizar seu código numérico de identificação.
+                           Envie /start para o bot <span className="text-white">@casasbahiarag_bot</span> no Telegram para visualizar seu código numérico de identificação.
                          </p>
                       </div>
 

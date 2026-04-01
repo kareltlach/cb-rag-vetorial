@@ -68,13 +68,12 @@ class SupabaseLite:
                         "prompt_text": prompt_text,
                         "views": 1 if stat_type == "views" else 0,
                         "copies": 1 if stat_type == "copies" else 0,
-                        "shares": 1 if stat_type == "shares" else 0,
-                        "last_interaction": "now()"
+                        "shares": 1 if stat_type == "shares" else 0
                     }
                     res = await client.post(f"{self.url}/prompt_statistics", headers=self.headers, json=payload)
                 else:
                     new_val = current.get(stat_type, 0) + 1
-                    payload = {stat_type: new_val, "last_interaction": "now()"}
+                    payload = {stat_type: new_val}
                     if prompt_text: payload["prompt_text"] = prompt_text
                     res = await client.patch(f"{self.url}/prompt_statistics?prompt_id=eq.{urllib.parse.quote(prompt_id)}", headers=self.headers, json=payload)
                 return await self.get_stats(prompt_id)
@@ -104,8 +103,10 @@ class SupabaseLite:
             current = await self.get_otp_status(email)
             async with httpx.AsyncClient() as client:
                 payload = {
-                    "email": email, "otp_code": str(otp), "chat_id": int(chat_id),
-                    "is_verified": False, "expires_at": "now() + interval '10 minutes'"
+                    "email": email, 
+                    "otp_code": str(otp), 
+                    "chat_id": int(chat_id),
+                    "is_verified": False
                 }
                 if current:
                     res = await client.patch(f"{self.url}/telegr_auth?email=eq.{urllib.parse.quote(email)}", headers=self.headers, json=payload)
