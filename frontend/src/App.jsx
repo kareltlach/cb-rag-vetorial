@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { supabase } from './supabaseClient';
+import Auth from './Auth';
 import './index.css'
 
 // URL base da API — Vite proxy redireciona /api no dev, Vercel serverless em produção
@@ -119,7 +121,7 @@ const PromptCodeBlock = ({ inner, blockKey, isWordWrap, setIsWordWrap, copyToCli
   )
 }
 
-const Sidebar = ({ isSidebarOpen, setIsSidebarOpen, sidebarLoading, documents, trending, setInput, onFileUpload, isUploading, onDeleteClick }) => (
+const Sidebar = ({ session, isSidebarOpen, setIsSidebarOpen, sidebarLoading, documents, trending, setInput, onFileUpload, isUploading, onDeleteClick }) => (
   <>
     {isSidebarOpen && <div className="mobile-overlay" onClick={() => setIsSidebarOpen(false)} />}
     <aside className={`sidebar ${!isSidebarOpen ? 'collapsed' : ''}`}>
@@ -217,6 +219,24 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen, sidebarLoading, documents, t
         </div>
       )}
 
+      {/* Sidebar Auth Section */}
+      <div className="sidebar-auth-section">
+        <div className="user-profile-sm">
+          <div className="user-avatar-sm">
+            {session?.user?.email?.charAt(0).toUpperCase()}
+          </div>
+          <div className="user-email-sm" title={session?.user?.email}>
+            {session?.user?.email}
+          </div>
+        </div>
+        <button 
+          className="logout-btn"
+          onClick={() => supabase.auth.signOut()}
+        >
+          <span>SAIR DA CONTA</span>
+        </button>
+      </div>
+
       <div className="sidebar-footer">
         <p className="version-text">v2.0 Premium AI</p>
       </div>
@@ -225,6 +245,25 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen, sidebarLoading, documents, t
 )
 
 function App() {
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // Auth Listener
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState([
     { role: 'ai', content: 'Olá! Sou seu assistente RAG Multimodal. Pergunte-me qualquer coisa sobre seus documentos, imagens ou vídeos.' }
@@ -492,9 +531,22 @@ function App() {
     return text.split(regex).map((part, i) => regex.test(part) ? <mark key={i} className="highlight-text">{part}</mark> : part);
   };
 
+  if (authLoading) return (
+    <div className="auth-container">
+      <div className="loader">
+        <div className="dot"></div>
+        <div className="dot"></div>
+        <div className="dot"></div>
+      </div>
+    </div>
+  );
+
+  if (!session) return <Auth />;
+
   return (
     <div className="app-layout">
       <Sidebar 
+        session={session}
         isSidebarOpen={isSidebarOpen} 
         setIsSidebarOpen={setIsSidebarOpen} 
         sidebarLoading={sidebarLoading} 
