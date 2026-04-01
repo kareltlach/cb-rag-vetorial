@@ -72,9 +72,9 @@ const WelcomeHub = ({ setInput, handleSearch }) => {
   ];
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[70vh] text-center space-y-12 animate-fade-in-up">
+    <div className="flex flex-col items-center justify-start min-h-[70vh] text-center space-y-8 animate-fade-in-up py-4">
       <div className="relative">
-        <div className="absolute -inset-4 bg-primary/20 blur-3xl rounded-full opacity-50"></div>
+        <div className="absolute -inset-24 bg-primary/20 blur-[100px] rounded-full opacity-40"></div>
         <div className="space-y-4 relative">
           <Badge variant="outline" className="px-5 py-1.5 rounded-full border-primary/20 bg-primary/5 text-primary text-[10px] font-black tracking-[0.2em] uppercase animate-pulse">
             DesignOps Intelligence • Q1-2026
@@ -88,12 +88,12 @@ const WelcomeHub = ({ setInput, handleSearch }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-3xl px-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-4xl px-0">
         {suggestions.map((s, i) => (
           <button
             key={i}
             onClick={() => { setInput(s.prompt); }}
-            className="group glass p-6 rounded-[2rem] text-left hover:bg-primary/[0.03] hover:border-primary/20 hover:scale-[1.02] transition-all duration-300 relative overflow-hidden"
+            className="group glass p-6 rounded-[2rem] text-left hover:bg-primary/[0.03] hover:border-primary/20 hover:scale-[1.02] transition-all duration-300 relative"
           >
             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                <ChevronRight className="w-20 h-20 -rotate-45" />
@@ -258,9 +258,7 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
   const [input, setInput] = useState('')
-  const [messages, setMessages] = useState([
-    { role: 'ai', content: 'Olá! Sou seu assistente RAG Multimodal. Pergunte-me qualquer coisa sobre seus documentos, imagens ou vídeos.' }
-  ])
+  const [messages, setMessages] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [selectedResult, setSelectedResult] = useState(null)
@@ -660,14 +658,14 @@ function App() {
           {/* Chat Canvas with Alpha Mask Fade */}
           <div className="flex-1 relative overflow-hidden">
             <ScrollArea 
-              className="h-full px-8 lg:px-20 pt-10"
+              className="h-full px-0 pt-0"
               style={{
-                maskImage: 'linear-gradient(to bottom, transparent, black 20%, black 90%, transparent)',
-                WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 20%, black 90%, transparent)'
+                maskImage: 'linear-gradient(to bottom, transparent, black 10%, black 95%, transparent)',
+                WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 10%, black 95%, transparent)'
               }}
             >
-              <div className="max-w-5xl mx-auto space-y-16 pb-40" role="log" aria-live="polite">
-                {messages.length <= 1 ? (
+              <div className="max-w-none mx-auto space-y-16 pb-0 px-10" role="log" aria-live="polite">
+                {(messages.length === 0 && !isLoading) ? (
                   <WelcomeHub setInput={setInput} handleSearch={handleSearch} />
                 ) : (
                 <div className="space-y-12">
@@ -771,7 +769,7 @@ function App() {
         </div>
 
         {/* Interactive Shell Input */}
-        <section className="p-10 relative z-50 bg-gradient-to-t from-background via-background/95 to-transparent pt-20">
+        <section className="px-10 pb-4 pt-0 relative z-50 bg-gradient-to-t from-background via-background/95 to-transparent">
             <div className="max-w-4xl mx-auto relative group">
               {/* Input Glow Decor */}
               <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-indigo-600/20 blur-2xl opacity-0 group-focus-within:opacity-100 transition-opacity duration-700"></div>
