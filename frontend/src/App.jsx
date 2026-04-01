@@ -236,37 +236,63 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024)
   const [isWordWrap, setIsWordWrap] = useState(true)
   const [trending, setTrending] = useState([])
+  const [isBackendOnline, setIsBackendOnline] = useState(true)
   const chatEndRef = useRef(null)
 
   useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api`)
+        setIsBackendOnline(response.ok)
+      } catch (err) {
+        setIsBackendOnline(false)
+      }
+    }
+
+    checkStatus()
     fetchDocuments()
     fetchTrending()
+    
     const docInterval = setInterval(fetchDocuments, 60000)
     const trendingInterval = setInterval(fetchTrending, 30000)
+    const statusInterval = setInterval(checkStatus, 5000)
+    
     return () => {
       clearInterval(docInterval)
       clearInterval(trendingInterval)
+      clearInterval(statusInterval)
     }
   }, [])
 
   const fetchTrending = async () => {
     try {
       const response = await fetch(`${API_BASE}/api/stats/trending`)
-      const data = await response.json()
-      setTrending(data)
-    } catch (err) { console.error('Erro ao buscar trending:', err) }
+      if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
+        const data = await response.json()
+        setTrending(data)
+        setIsBackendOnline(true)
+      }
+    } catch (err) { 
+      console.error('Erro ao buscar trending:', err)
+      setIsBackendOnline(false)
+    }
   }
 
   const fetchDocuments = async () => {
     setSidebarLoading(true)
     try {
       const response = await fetch(`${API_BASE}/api/documents`)
-      if (response.ok) {
+      if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
         const data = await response.json()
         setDocuments(data)
+        setIsBackendOnline(true)
       }
-    } catch (err) { console.error('Erro ao carregar documentos:', err) }
-    finally { setSidebarLoading(false) }
+    } catch (err) { 
+      console.error('Erro ao carregar documentos:', err)
+      setIsBackendOnline(false)
+    } finally { 
+      setSidebarLoading(false) 
+    }
   }
 
   const handleDeleteDocument = async () => {
@@ -451,9 +477,15 @@ function App() {
               {isSidebarOpen ? '❮' : '☰'}
             </button>
             <div className="header-content">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <h1>Casas Bahia RAG</h1>
-              <p>Multimodal Agent</p>
+              <div 
+                className={`status-indicator ${isBackendOnline ? 'online' : 'offline'}`}
+                title={isBackendOnline ? 'Servidor Online' : 'Servidor Offline'}
+              ></div>
             </div>
+            <p>Multimodal Agent {!isBackendOnline && <span style={{ color: '#f43f5e', fontWeight: 'bold' }}>(OFFLINE)</span>}</p>
+          </div>
           </div>
           <button className="settings-toggle" onClick={() => setIsSettingsOpen(true)}>⚙️</button>
         </header>

@@ -153,18 +153,6 @@ async def process_and_index_file_internal(file_path: str, mod_type: str):
     except Exception as e:
         print(f"Erro indexação multimodal: {e}")
 
-    async def get_trending(self, limit=5):
-        if not SUPABASE_URL or not SUPABASE_ANON_KEY:
-            return []
-        try:
-            async with httpx.AsyncClient() as client:
-                url = f"{self.url}/prompt_statistics?order=views.desc&limit={limit}"
-                response = await client.get(url, headers=self.headers)
-                return response.json()
-        except Exception as e:
-            print(f"Erro Supabase Trending: {e}")
-            return []
-
 sb_lite = SupabaseLite(SUPABASE_URL, SUPABASE_ANON_KEY) if SUPABASE_URL and SUPABASE_ANON_KEY else None
 
 class LocalStatsStore:
@@ -372,6 +360,15 @@ async def delete_document(filename: str):
 @app.get("/api")
 async def root():
     return {"message": "RAG Multimodal Agent API is running"}
+
+@app.get("/api/stats/trending")
+async def get_trending_stats():
+    """Retorna estatísticas de trending (Mockup para evitar erros no frontend)"""
+    return [
+        {"id": "1", "title": "Manual de Integração", "views": 1250, "copies": 450},
+        {"id": "2", "title": "Políticas de RH 2024", "views": 980, "copies": 320},
+        {"id": "3", "title": "Guia Multimodal Gemini", "views": 840, "copies": 150}
+    ]
 
 @app.post("/api/search", response_model=ChatResponse)
 async def search(search_query: SearchQuery):
