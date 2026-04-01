@@ -16,12 +16,19 @@ from google import genai
 from google.genai import types
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, RetryError
 
+import urllib.parse
+import random
+from typing import List, Optional
+
 # Carregar ambiente
 load_dotenv()
 
 # Configurações Supabase
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 class SupabaseLite:
     def __init__(self, url, key):
@@ -180,6 +187,8 @@ class SupabaseLite:
         except: return False
 
 # Instância Supabase
+if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+    print("WARNING: Supabase credentials missing in ENV")
 sb_lite = SupabaseLite(SUPABASE_URL, SUPABASE_ANON_KEY) if SUPABASE_URL and SUPABASE_ANON_KEY else None
 
 app = FastAPI(title="RAG Multimodal API (Vercel)")
@@ -271,29 +280,23 @@ async def increment_stat(data: StatIncrement):
 async def send_otp(req: OTPSendRequest):
     import random
     otp = random.randint(100000, 999999)
-    if not sb_lite: raise HTTPException(status_code=503, detail="Supabase não conectado")
+    if not sb_lite: raise HTTPException(status_code=503, detail="Supabase não configurado na Vercel.")
     
     success = await sb_lite.save_otp(req.email, otp, req.chat_id)
     if not success: 
-        raise HTTPException(status_code=500, detail="Erro interno ao registrar código no banco. Verifique as tabelas do Supabase.")
+        raise HTTPException(status_code=500, detail="Erro ao registrar código operacional no banco.")
 
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not bot_token: 
-        raise HTTPException(status_code=500, detail="Configuração do Telegram (Token) ausente na Vercel.")
+        raise HTTPException(status_code=503, detail="Variável TELEGRAM_BOT_TOKEN não encontrada na Vercel.")
 
     async with httpx.AsyncClient() as client:
-        message = f"🔒 *Código Operacional - Casas Bahia RAG*\n\nSeu código é: `{otp}`\n\nEste código expira em 10 minutos."
+        message = f"🔒 *Código de Acesso - Casas Bahia RAG*\n\nSeu código é: `{otp}`\n\nEste código expira em 10 minutos."
         tg_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-        try:
-            tg_res = await client.post(tg_url, json={"chat_id": str(req.chat_id).strip(), "text": message, "parse_mode": "Markdown"})
-            if tg_res.status_code != 200:
-                print(f"DEBUG: Telegram API Error: {tg_res.text}")
-                raise HTTPException(status_code=400, detail="ID de Telegram inválido ou bot não iniciado (@casasbahiarag_bot).")
-        except Exception as e:
-            print(f"CRITICAL: Telegram request exception: {str(e)}")
-            raise HTTPException(status_code=500, detail="Falha na comunicação com o gateway do Telegram.")
+        tg_res = await client.post(tg_url, json={"chat_id": str(req.chat_id).strip(), "text": message, "parse_mode": "Markdown"})
+        if tg_res.status_code != 200: raise HTTPException(status_code=400, detail="Telegram ID inválido ou bot não iniciado.")
 
-    return {"message": "Código de segurança enviado com sucesso!"}
+    return {"message": "Código enviado com sucesso!"}
 
 @app.get("/api/auth/otp/status/{email}")
 async def get_otp_status_route(email: str):
