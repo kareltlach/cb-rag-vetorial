@@ -564,6 +564,11 @@ function App() {
     } finally { setIsLoading(false) }
   }
 
+  const handleClearChat = () => {
+    setMessages([])
+    toast.info("Memória do terminal limpa.")
+  }
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
   }
@@ -633,26 +638,40 @@ function App() {
               </div>
             </div>
             
-            <div className="flex items-center gap-4">
-              <div className="hidden sm:flex items-center gap-4 mr-4 text-foreground/20 text-[10px] font-black uppercase tracking-wider">
-                 <div className="flex items-center gap-2"><Activity className="w-3 h-3 text-primary/40" /> 0.2ms</div>
-                 <div className="flex items-center gap-2"><History className="w-3 h-3 text-primary/40" /> Last Index 2m</div>
+              <div className="flex items-center gap-2">
+                <div className="hidden sm:flex items-center gap-4 mr-4 text-foreground/20 text-[10px] font-black uppercase tracking-wider">
+                   <div className="flex items-center gap-2"><Activity className="w-3 h-3 text-primary/40" /> 0.2ms</div>
+                   <div className="flex items-center gap-2"><History className="w-3 h-3 text-primary/40" /> Last Index 2m</div>
+                </div>
+                
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      size="icon" 
+                      onClick={handleClearChat}
+                      className="border-white/5 bg-white/[0.02] text-foreground/30 hover:text-rose-500 hover:border-rose-500/40 rounded-2xl transition-all shadow-inner h-11 w-11"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Limpar Terminal</TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      size="icon" 
+                      onClick={() => setIsSettingsOpen(true)}
+                      className="border-white/5 bg-white/[0.02] text-foreground/30 hover:text-white hover:border-primary/40 rounded-2xl transition-all shadow-inner h-11 w-11"
+                    >
+                      <SettingsIcon className="w-5 h-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Parâmetros do Modelo</TooltipContent>
+                </Tooltip>
               </div>
-              
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    onClick={() => setIsSettingsOpen(true)}
-                    className="border-white/5 bg-white/[0.02] text-foreground/30 hover:text-white hover:border-primary/40 rounded-2xl transition-all shadow-inner h-11 w-11"
-                  >
-                    <SettingsIcon className="w-5 h-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Parâmetros do Modelo</TooltipContent>
-              </Tooltip>
-            </div>
           </header>
 
           {/* Chat Canvas with Alpha Mask Fade */}
