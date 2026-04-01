@@ -40,9 +40,9 @@ class LocalStatsStore:
             data[prompt_id][type] = data[prompt_id].get(type, 0) + 1
             with open(self.filename, 'w') as f:
                 json.dump(data, f)
-            return True
+            return data[prompt_id]
         except:
-            return False
+            return {"views": 0, "copies": 0, "shares": 0}
 
 # Configuração Supabase Lite (via httpx)
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -92,10 +92,11 @@ class SupabaseLite:
                     payload = {stat_type: new_val}
                     url = f"{self.url}/prompt_statistics?prompt_id=eq.{prompt_id}"
                     await client.patch(url, headers=self.headers, json=payload)
-                return True
+                
+                return await self.get_stats(prompt_id)
         except Exception as e:
             print(f"Erro Supabase Increment: {e}")
-            return False
+            return None
 
     async def get_trending(self, limit=5):
         if not SUPABASE_URL or not SUPABASE_KEY or SUPABASE_KEY == "SEU_ANON_KEY_AQUI":
@@ -344,14 +345,14 @@ class StatIncrement(BaseModel):
 
 @app.post("/api/stats/increment")
 async def increment_stat(data: StatIncrement):
-    success = False
+    result = None
     if sb_lite:
-        success = await sb_lite.increment_stat(data.prompt_id, data.type)
+        result = await sb_lite.increment_stat(data.prompt_id, data.type)
 
     # Sempre atualiza o local também
-    local_success = _local_stats.increment(data.prompt_id, data.type)
+    local_result = _local_stats.increment(data.prompt_id, data.type)
     
-    return {"status": "success" if (success or local_success) else "error"}
+    return result if result else local_result
 
 if __name__ == "__main__":
     import uvicorn

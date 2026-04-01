@@ -505,6 +505,9 @@ async def increment_stat(data: StatIncrement):
     if sb_lite:
         result = await sb_lite.increment_stat(data.prompt_id, data.type)
 
+    # Sempre atualiza o local também e usa como fallback
+    local_result = _local_stats.increment(data.prompt_id, data.type)
+    
     return result if result else local_result
 
 @app.post("/api/upload")

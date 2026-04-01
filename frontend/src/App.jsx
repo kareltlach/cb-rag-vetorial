@@ -29,16 +29,26 @@ const PromptCodeBlock = ({ inner, blockKey, isWordWrap, setIsWordWrap, copyToCli
   const key = getStatKey(inner.trim())
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/stats/${key}`)
-      .then(res => res.json())
-      .then(data => setStats(data))
-      .catch(err => console.error('Erro ao buscar stats:', err))
+    const fetchStats = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/stats/${key}`)
+        const data = await res.json()
+        if (data && typeof data === 'object' && !data.status) {
+          setStats(prev => ({ ...prev, ...data }))
+        }
+      } catch (err) { console.error('Erro ao buscar stats:', err) }
+    }
 
+    fetchStats()
+
+    // Incrementa visualização e pega o estado atualizado
     updateStat(inner.trim(), 'views')
       .then(data => {
-        if (data) setStats(data)
+        if (data && typeof data === 'object' && !data.status) {
+          setStats(prev => ({ ...prev, ...data }))
+        }
       })
-  }, [])
+  }, [key])
 
   return (
     <div key={blockKey} className={`code-block ${isWordWrap ? 'word-wrap' : ''}`}>
@@ -55,9 +65,11 @@ const PromptCodeBlock = ({ inner, blockKey, isWordWrap, setIsWordWrap, copyToCli
           <button
             className="share-teams-btn"
             onClick={async () => {
-              const newStats = await updateStat(inner.trim(), 'shares')
-              if (newStats) setStats(newStats)
               shareToTeams(inner.trim())
+              const newStats = await updateStat(inner.trim(), 'shares')
+              if (newStats && typeof newStats === 'object' && !newStats.status) {
+                setStats(prev => ({ ...prev, ...newStats }))
+              }
             }}
             title="Compartilhar no Microsoft Teams"
           >
@@ -66,9 +78,11 @@ const PromptCodeBlock = ({ inner, blockKey, isWordWrap, setIsWordWrap, copyToCli
           <button
             className={`copy-btn ${copiedIdx[blockKey] ? 'copied' : ''}`}
             onClick={async () => {
-              const newStats = await updateStat(inner.trim(), 'copies')
-              if (newStats) setStats(newStats)
               copyToClipboard(inner.trim(), blockKey)
+              const newStats = await updateStat(inner.trim(), 'copies')
+              if (newStats && typeof newStats === 'object' && !newStats.status) {
+                setStats(prev => ({ ...prev, ...newStats }))
+              }
             }}
           >
             {copiedIdx[blockKey] ? '✓ Copiado!' : 'Copiar Prompt'}
