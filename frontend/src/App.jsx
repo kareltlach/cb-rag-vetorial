@@ -247,11 +247,25 @@ const Sidebar = ({ session, isSidebarOpen, setIsSidebarOpen, sidebarLoading, doc
 function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [isVerified, setIsVerified] = useState(false);
+
+  const API_BASE = window.location.origin.includes('localhost') ? 'http://localhost:8001' : '';
 
   // Auth Listener
   useEffect(() => {
+    const checkVerification = async (email) => {
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/otp/status/${email}`);
+        const data = await res.json();
+        setIsVerified(data.is_verified);
+      } catch (e) {
+        console.error("Erro verificação:", e);
+      }
+    };
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+      if (session) checkVerification(session.user.email);
       setAuthLoading(false);
     });
 
@@ -259,6 +273,8 @@ function App() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      if (session) checkVerification(session.user.email);
+      else setIsVerified(false);
     });
 
     return () => subscription.unsubscribe();
@@ -541,7 +557,7 @@ function App() {
     </div>
   );
 
-  if (!session) return <Auth />;
+  if (!session || !isVerified) return <Auth initialEmail={session?.user?.email} />;
 
   return (
     <div className="app-layout">

@@ -59,7 +59,7 @@ class SupabaseLite:
         }
 
     async def get_stats(self, prompt_id):
-        if not SUPABASE_URL or not SUPABASE_KEY or SUPABASE_KEY == "SEU_ANON_KEY_AQUI":
+        if not SUPABASE_URL or not SUPABASE_KEY:
             return None
         try:
             async with httpx.AsyncClient() as client:
@@ -70,6 +70,56 @@ class SupabaseLite:
         except Exception as e:
             print(f"Erro Supabase GET: {e}")
             return None
+
+    # --- TELEGRAM AUTH METHODS ---
+    async def get_otp_status(self, email):
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.url}/telegr_auth?email=eq.{email}"
+                response = await client.get(url, headers=self.headers)
+                data = response.json()
+                return data[0] if data else None
+        except Exception as e:
+            print(f"Erro Supabase GET OTP: {e}")
+            return None
+
+    async def save_otp(self, email, otp, chat_id):
+        try:
+            current = await self.get_otp_status(email)
+            async with httpx.AsyncClient() as client:
+                payload = {
+                    "email": email,
+                    "otp_code": str(otp),
+                    "chat_id": int(chat_id),
+                    "is_verified": False,
+                    "expires_at": "now() + interval '10 minutes'" # Sql handle
+                }
+                if current:
+                    url = f"{self.url}/telegr_auth?email=eq.{email}"
+                    await client.patch(url, headers=self.headers, json={"otp_code": str(otp), "chat_id": int(chat_id), "is_verified": False})
+                else:
+                    await client.post(f"{self.url}/telegr_auth", headers=self.headers, json=payload)
+                return True
+        except Exception as e:
+            print(f"Erro Supabase SAVE OTP: {e}")
+            return False
+
+    async def verify_otp(self, email, otp):
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.url}/telegr_auth?email=eq.{email}&otp_code=eq.{otp}"
+                response = await client.get(url, headers=self.headers)
+                data = response.json()
+                if data:
+                    # Marcar como verificado
+                    patch_url = f"{self.url}/telegr_auth?email=eq.{email}"
+                    await client.patch(patch_url, headers=self.headers, json={"is_verified": True})
+                    return True
+                return False
+        except Exception as e:
+            print(f"Erro Supabase VERIFY OTP: {e}")
+            return False
+    # -----------------------------
 
     async def increment_stat(self, prompt_id, stat_type):
         if not SUPABASE_URL or not SUPABASE_KEY or SUPABASE_KEY == "SEU_ANON_KEY_AQUI":
@@ -209,6 +259,14 @@ class SearchResult(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     sources: List[SearchResult]
+
+class OTPSendRequest(BaseModel):
+    email: str
+    chat_id: str
+
+class OTPVerifyRequest(BaseModel):
+    email: str
+    otp_code: str
 
 
 @app.get("/api/documents")
@@ -353,6 +411,52 @@ async def increment_stat(data: StatIncrement):
     local_result = _local_stats.increment(data.prompt_id, data.type)
     
     return result if result else local_result
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Rotas de Autenticação Telegram (OTP)
+# ───────────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/auth/otp/send")
+async def send_otp(req: OTPSendRequest):
+    import random
+    otp = random.randint(100000, 999999)
+    
+    # 1. Salvar no Supabase
+    success = await sb_lite.save_otp(req.email, otp, req.chat_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Erro ao gerar código de segurança.")
+
+    # 2. Enviar via Telegram
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not bot_token:
+        raise HTTPException(status_code=500, detail="Configuração do Bot Telegram ausente.")
+
+    async with httpx.AsyncClient() as client:
+        message = f"🔒 *Código de Acesso - Casas Bahia RAG*\n\nSeu código de verificação é: `{otp}`\n\nEste código expira em 10 minutos."
+        tg_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        tg_res = await client.post(tg_url, json={
+            "chat_id": req.chat_id,
+            "text": message,
+            "parse_mode": "Markdown"
+        })
+        
+        if tg_res.status_code != 200:
+            print(f"Erro Telegram: {tg_res.text}")
+            raise HTTPException(status_code=400, detail="Não foi possível enviar a mensagem para este ID de Telegram.")
+
+    return {"message": "Código enviado com sucesso!"}
+
+@app.get("/api/auth/otp/status/{email}")
+async def get_otp_status(email: str):
+    status = await sb_lite.get_otp_status(email)
+    return {"is_verified": status.get("is_verified", False) if status else False}
+
+@app.post("/api/auth/otp/verify")
+async def verify_otp(req: OTPVerifyRequest):
+    success = await sb_lite.verify_otp(req.email, req.otp_code)
+    if not success:
+        raise HTTPException(status_code=401, detail="Código inválido ou expirado.")
+    return {"message": "Verificação concluída!", "verified": True}
 
 if __name__ == "__main__":
     import uvicorn
