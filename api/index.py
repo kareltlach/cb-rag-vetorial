@@ -127,7 +127,7 @@ app.add_middleware(
 # Configurações do RAG
 INDEX_NAME = "multimodal-rag"
 EMBEDDING_MODEL = "gemini-embedding-2-preview"
-GENERATIVE_MODEL = "gemini-2.5-flash"
+GENERATIVE_MODEL = "gemini-3-flash-preview"
 
 SYSTEM_PROMPT = """
 Você é um especialista em Design e Experiência do Usuário (UX). 
@@ -315,7 +315,7 @@ async def search(search_query: SearchQuery):
         print(f"ERRO NO BACKEND: {error_msg}")
 
         if "429" in error_msg or "QUOTA_EXHAUSTED" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-            friendly_msg = "A cota do Google Gemini foi atingida para este período (429). Por favor, mude para o modelo 'Gemini 1.5 Flash' nas configurações ou aguarde 1 minuto."
+            friendly_msg = "A cota do Google Gemini foi atingida para este período (429). Por favor, mude para o modelo 'Gemini 3.1 Flash Lite' nas configurações ou aguarde 1 minuto."
             raise HTTPException(status_code=429, detail=friendly_msg)
 
         import traceback

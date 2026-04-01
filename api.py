@@ -74,6 +74,19 @@ class SupabaseLite:
             print(f"Erro Supabase Increment: {e}")
             return None
 
+    async def get_trending(self, limit=5):
+        if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+            return []
+        try:
+            async with httpx.AsyncClient() as client:
+                # Ordena por visualizações descendente
+                url = f"{self.url}/prompt_statistics?order=views.desc&limit={limit}"
+                response = await client.get(url, headers=self.headers)
+                return response.json()
+        except Exception as e:
+            print(f"Erro Supabase Trending: {e}")
+            return []
+
 # --- Ingestão / Helper Functions ---
 def sanitize_vector_id(name: str):
     """Garante que o ID seja ASCII e sem caracteres especiais para o Pinecone."""
@@ -199,7 +212,7 @@ app.add_middleware(
 # Configurações do RAG
 INDEX_NAME = "multimodal-rag"
 EMBEDDING_MODEL = "gemini-embedding-2-preview"
-GENERATIVE_MODEL = "gemini-2.5-flash" # Modelo padrão de última geração
+GENERATIVE_MODEL = "gemini-3-flash-preview" # Modelo padrão de última geração
 
 # Prompt do Sistema (IA Agente Tutorial)
 SYSTEM_PROMPT = """
@@ -365,14 +378,6 @@ async def delete_document(filename: str):
 async def root():
     return {"message": "RAG Multimodal Agent API is running"}
 
-@app.get("/api/stats/trending")
-async def get_trending_stats():
-    """Retorna estatísticas de trending (Mockup para evitar erros no frontend)"""
-    return [
-        {"id": "1", "prompt_id": "p-manual_integracao", "views": 1250, "copies": 450},
-        {"id": "2", "prompt_id": "p-politicas_rh_2024", "views": 980, "copies": 320},
-        {"id": "3", "prompt_id": "p-guia_multimodal_gemini", "views": 840, "copies": 150}
-    ]
 
 @app.post("/api/search", response_model=ChatResponse)
 async def search(search_query: SearchQuery):
@@ -460,7 +465,7 @@ async def search(search_query: SearchQuery):
         print(f"ERRO CRÍTICO NO BACKEND: {error_msg}")
         
         if "429" in error_msg or "QUOTA_EXHAUSTED" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-            friendly_msg = "A cota do Google Gemini foi atingida para este período (429). Por favor, aguarde cerca de 1 minuto ou mude para o modelo 'Gemini 1.5 Flash' nas configurações."
+            friendly_msg = "A cota do Google Gemini foi atingida para este período (429). Por favor, aguarde cerca de 1 minuto ou mude para o modelo 'Gemini 3.1 Flash Lite' nas configurações."
             raise HTTPException(status_code=429, detail=friendly_msg)
             
         import traceback
