@@ -1,12 +1,19 @@
 import os
 import json
 import httpx
+import re
+import unicodedata
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from dotenv import load_dotenv
+import shutil
+import uuid
+import time
+from urllib.parse import unquote
+from pypdf import PdfReader
 
 # Reusa a lógica de busca do script anterior
 from pinecone import Pinecone
@@ -66,6 +73,85 @@ class SupabaseLite:
         except Exception as e:
             print(f"Erro Supabase Increment: {e}")
             return None
+
+# --- Ingestão / Helper Functions ---
+def sanitize_vector_id(name: str):
+    """Garante que o ID seja ASCII e sem caracteres especiais para o Pinecone."""
+    # Remove emojis e normaliza para ASCII (ex: 'á' -> 'a')
+    nfkd_form = unicodedata.normalize('NFKD', name)
+    only_ascii = nfkd_form.encode('ASCII', 'ignore').decode('ASCII')
+    # Substitui espaços e caracteres não-alfanuméricos por underscores
+    clean = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', only_ascii)
+    # Remove underscores duplicados ou no início/fim
+    return re.sub(r'_+', '_', clean).strip('_')
+
+def extract_text_chunks_from_pdf(pdf_path, chunk_size=1200, overlap=150):
+    text_chunks = []
+    try:
+        reader = PdfReader(pdf_path)
+        full_text = ""
+        for page_num, page in enumerate(reader.pages):
+            page_text = page.extract_text()
+            if page_text:
+                full_text += f"\n[Página {page_num + 1}]\n" + page_text
+        
+        start = 0
+        while start < len(full_text):
+            end = start + chunk_size
+            chunk = full_text[start:end]
+            text_chunks.append(chunk)
+            start += (chunk_size - overlap)
+    except Exception as e:
+        print(f"Erro ao ler PDF {pdf_path}: {e}")
+    return text_chunks
+
+async def upload_to_gemini(file_path: str):
+    print(f"Fazendo upload do arquivo para Gemini: {file_path}")
+    file = client.files.upload(file=file_path)
+    while file.state.name == 'PROCESSING':
+        time.sleep(2)
+        file = client.files.get(name=file.name)
+    if file.state.name == 'FAILED':
+        raise ValueError(f"Falha ao processar o arquivo no Gemini {file.name}")
+    return file
+
+async def process_and_index_file_internal(file_path: str, mod_type: str):
+    if not index: return
+    
+    if mod_type == "document" and file_path.lower().endswith(".pdf"):
+        chunks = extract_text_chunks_from_pdf(file_path)
+        for i, chunk_text in enumerate(chunks):
+            formatted_text = f"task: search result | content: {chunk_text}"
+            res = client.models.embed_content(model=EMBEDDING_MODEL, contents=formatted_text)
+            vector = res.embeddings[0].values
+            sanitized_name = sanitize_vector_id(os.path.basename(file_path))
+            cid = f"{sanitized_name}_ch_{i}_{str(uuid.uuid4())[:8]}"
+            # Normalizar caminho para o Pinecone (sempre use / mesmo no Windows)
+            normalized_path = file_path.replace('\\', '/')
+            metadata = {
+                "source": normalized_path,
+                "type": "pdf_chunk",
+                "text_content": chunk_text,
+                "chunk_index": i
+            }
+            index.upsert(vectors=[{"id": cid, "values": vector, "metadata": metadata}])
+        return
+
+    # Multimodal (Imagem, Vídeo)
+    sanitized_filename = sanitize_vector_id(os.path.basename(file_path))
+    fid = f"mm_{sanitized_filename}_{str(uuid.uuid4())[:8]}"
+    # Normalizar caminho para o Pinecone (sempre use / mesmo no Windows)
+    normalized_path = file_path.replace('\\', '/')
+    metadata = {"source": normalized_path, "type": mod_type}
+    try:
+        uploaded_file = await upload_to_gemini(file_path)
+        res = client.models.embed_content(model=EMBEDDING_MODEL, contents=uploaded_file)
+        vector = res.embeddings[0].values
+        metadata["gemini_file_uri"] = uploaded_file.uri
+        metadata["text_content"] = f"Conteúdo Multimodal: {os.path.basename(file_path)}"
+        index.upsert(vectors=[{"id": fid, "values": vector, "metadata": metadata}])
+    except Exception as e:
+        print(f"Erro indexação multimodal: {e}")
 
     async def get_trending(self, limit=5):
         if not SUPABASE_URL or not SUPABASE_ANON_KEY:
@@ -250,6 +336,39 @@ async def list_documents():
                 })
     return docs
 
+@app.delete("/api/documents/{filename:path}")
+async def delete_document(filename: str):
+    """Remove um documento da pasta /data e seus vetores correspondentes no Pinecone"""
+    # Decodifica o caminho (útil para subpastas codificadas na URL)
+    rel_path = unquote(filename)
+    # Reconstrói o caminho completo no disco usando o separador correto do OS
+    file_path = os.path.join("data", rel_path)
+    
+    if not os.path.exists(file_path):
+        # Tenta sanitizar o caminho caso tenha vindo com barras invertidas
+        file_path = os.path.join("data", rel_path.replace('\\', os.sep).replace('/', os.sep))
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail=f"Arquivo {rel_path} não encontrado no servidor em {file_path}")
+
+    try:
+        # 1. Remover do Pinecone usando filtro pelo metadado 'source'
+        if index:
+            # SEMPRE normaliza para forward slashes para bater com o padrão de indexação
+            normalized_search_path = rel_path.replace('\\', '/')
+            if not normalized_search_path.startswith('data/'):
+                normalized_search_path = f"data/{normalized_search_path}"
+            
+            index.delete(filter={"source": {"$eq": normalized_search_path}})
+            print(f"Vetores do documento {normalized_search_path} removidos do Pinecone.")
+
+        # 2. Remover arquivo físico local
+        os.remove(file_path)
+        return {"status": "success", "message": f"Documento {rel_path} e seus índices vetoriais foram removidos com sucesso."}
+        
+    except Exception as e:
+        print(f"Erro ao deletar documento {filename}: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro ao remover documento: {str(e)}")
+
 @app.get("/api")
 async def root():
     return {"message": "RAG Multimodal Agent API is running"}
@@ -300,7 +419,7 @@ async def search(search_query: SearchQuery):
             metadata = match.metadata
             if "source" in metadata:
                 rel_path = metadata["source"].replace("data/", "")
-                metadata["media_url"] = f"http://localhost:8000/media/{rel_path}"
+                metadata["media_url"] = f"/media/{rel_path}"
                 
             formatted_results.append(SearchResult(
                 id=match.id,
@@ -376,11 +495,30 @@ async def increment_stat(data: StatIncrement):
     if sb_lite:
         result = await sb_lite.increment_stat(data.prompt_id, data.type)
 
-    # Fallback/Sincronização local
-    local_result = _local_stats.increment(data.prompt_id, data.type)
-    
     return result if result else local_result
+
+@app.post("/api/upload")
+async def upload_file_endpoint(file: UploadFile = File(...)):
+    if not os.path.exists("data"):
+        os.makedirs("data")
+
+    file_path = os.path.join("data", file.filename)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # Determinar tipo
+    ext = file.filename.lower().split('.')[-1]
+    mod_type = "document" # Padrão
+    if ext in ['png', 'jpg', 'jpeg']: mod_type = "image"
+    elif ext in ['mp4', 'mov', 'webm']: mod_type = "video"
+    
+    # Processamento assíncrono (em background seria ideal, mas fazemos direto para simplificar o feedback)
+    try:
+        await process_and_index_file_internal(file_path, mod_type)
+        return {"status": "success", "filename": file.filename}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

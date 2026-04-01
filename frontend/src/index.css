@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;600;700;800;900&display=swap');
+﻿@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;600;700;800;900&display=swap');
 
 :root {
   --bg-color: #030510;
@@ -743,7 +743,7 @@ body {
   text-shadow: 0 0 10px rgba(0, 29, 205, 0.3);
 }
 
-/* ── Markdown Typography ─────────────────────────────────────── */
+/* â”€â”€ Markdown Typography â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .md-h3 {
   font-size: 1.1rem;
   font-weight: 700;
@@ -773,7 +773,7 @@ body {
   border: 1px solid rgba(0, 29, 205, 0.25);
 }
 
-/* ── Code Block Editor (Premium) ─────────────────────────────── */
+/* â”€â”€ Code Block Editor (Premium) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .code-block {
   background: #010c22;
   border: 1px solid rgba(26, 79, 255, 0.3);
@@ -1082,7 +1082,7 @@ body {
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* ── Responsiveness ────────────────────────────────────────── */
+/* â”€â”€ Responsiveness â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @media (max-width: 1024px) {
   .sidebar {
     position: fixed;
@@ -1170,3 +1170,181 @@ body {
     padding: 1.2rem 0.8rem;
   }
 }
+
+/* -- Upload Component Styles (Fixed UI) ---------------- */
+.upload-section {
+  padding: 1.5rem;
+  width: 100%;
+}
+
+.upload-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 20px;
+  padding: 1.8rem 1rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  gap: 10px;
+}
+
+.upload-card:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: #60a5fa;
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+
+.upload-card.uploading {
+  pointer-events: none;
+  background: rgba(96, 165, 250, 0.05);
+  border-style: solid;
+}
+
+.upload-icon {
+  font-size: 1.8rem;
+  margin-bottom: 0.2rem;
+  line-height: 1;
+}
+
+.upload-text {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-main);
+  letter-spacing: 0.5px;
+}
+
+.upload-hint {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
+.upload-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 4px;
+  background: linear-gradient(to right, #60a5fa, #001dcd);
+  width: 0%;
+  transition: width 0.3s ease;
+}
+
+.uploading .upload-progress-bar {
+  width: 100%;
+  animation: progressPulse 1.5s infinite ease-in-out;
+}
+
+@keyframes progressPulse {
+  0% { opacity: 0.3; }
+  50% { opacity: 1; }
+  100% { opacity: 0.3; }
+}
+
+.upload-status-msg {
+  font-size: 0.72rem;
+  color: #60a5fa;
+  margin-top: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  font-weight: 600;
+}
+
+.spinner-sm {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-top-color: #60a5fa;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* --- Delete & Modal Styles (Premium UI) --- */
+.delete-doc-btn {
+  background: rgba(244, 63, 94, 0.05);
+  border: 1px solid rgba(244, 63, 94, 0.1);
+  color: var(--accent-purple);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0.4;
+  z-index: 5;
+}
+
+.document-item:hover .delete-doc-btn {
+  opacity: 1;
+  background: rgba(244, 63, 94, 0.15);
+  border-color: var(--accent-purple);
+  transform: scale(1.1);
+}
+
+.delete-doc-btn:hover {
+  background: var(--accent-purple) !important;
+  color: white !important;
+  box-shadow: 0 0 15px rgba(244, 63, 94, 0.4);
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(3, 5, 16, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.modal-content {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  padding: 2.5rem;
+  border-radius: 28px;
+  max-width: 480px;
+  width: 90%;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6),
+              0 0 0 1px rgba(255, 255, 255, 0.05);
+  animation: slideUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.delete-modal .modal-title {
+  color: var(--accent-purple);
+  font-size: 1.5rem;
+  font-weight: 800;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.delete-modal p {
+  color: var(--text-dim);
+  text-align: center;
+  line-height: 1.6;
+  margin-bottom: 2rem;
+}
+
+.delete-modal strong {
+  color: var(--text-main);
+  word-break: break-all;
+}
+
