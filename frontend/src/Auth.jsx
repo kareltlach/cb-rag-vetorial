@@ -31,11 +31,11 @@ export default function Auth({ initialEmail = '' }) {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState('');
+  const [chatId, setChatId] = useState('');
+  const [step, setStep] = useState('auth'); // 'auth' -> 'link' -> 'verify'
   const [authMode, setAuthMode] = useState('login'); // 'login' or 'signup'
   const [showPassword, setShowPassword] = useState(false);
-  const [verificationPending, setVerificationPending] = useState(false);
 
   useEffect(() => {
     if (initialEmail) setEmail(initialEmail);
@@ -48,20 +48,18 @@ export default function Auth({ initialEmail = '' }) {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       
-      toast.success("Credenciais validadas. Iniciando handshake MFA...");
-      
-      // Envia OTP via Telegram
-      const otpRes = await fetch(`${API_BASE}/api/auth/otp/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
-      });
-      
-      if (otpRes.ok) {
-        setOtpSent(true);
-        toast.info("Código de segurança enviado via Telegram.");
+      toast.success("Credenciais de acesso validadas.");
+
+      // Verifica se já tem Telegram ID vinculado
+      const statusRes = await fetch(`${API_BASE}/api/auth/otp/status/${encodeURIComponent(email)}`);
+      const statusData = await statusRes.json();
+
+      if (statusData && statusData.is_verified) {
+        // Já tem vínculo, vai direto para verificação (envia OTP)
+        await handleSendOtp();
       } else {
-        toast.error("Cluster MFA indisponível temporariamente.");
+        // Precisa vincular o Telegram ID
+        setStep('link');
       }
     } catch (error) {
       toast.error(`Falha na Autenticação: ${error.message}`);
@@ -76,10 +74,36 @@ export default function Auth({ initialEmail = '' }) {
     try {
       const { error } = await supabase.auth.signUp({ email, password });
       if (error) throw error;
-      toast.success("Consulte seu e-mail para confirmar a conta.");
-      setAuthMode('login');
+      
+      toast.success("Terminal registrado. Procedendo para vincular Telegram.");
+      setStep('link');
     } catch (error) {
       toast.error(`Erro no Registro: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSendOtp = async (e) => {
+    if (e) e.preventDefault();
+    setLoading(true);
+    try {
+      // Se estamos no passo 'link', usamos o chatId que o usuário digitou
+      // Caso contrário, o backend já tem o chat_id salvo
+      const otpRes = await fetch(`${API_BASE}/api/auth/otp/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, chat_id: chatId })
+      });
+      
+      if (otpRes.ok) {
+        setStep('verify');
+        toast.info("Código de segurança enviado via Telegram.");
+      } else {
+        toast.error("Cluster MFA indisponível temporariamente.");
+      }
+    } catch (error) {
+      toast.error("Erro ao enviar código de segurança.");
     } finally {
       setLoading(false);
     }
@@ -92,7 +116,7 @@ export default function Auth({ initialEmail = '' }) {
       const res = await fetch(`${API_BASE}/api/auth/otp/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, code: otpCode })
+        body: JSON.stringify({ email, otp_code: otpCode })
       });
       
       if (res.ok) {
@@ -130,7 +154,7 @@ export default function Auth({ initialEmail = '' }) {
               <p className="text-foreground/30 text-[10px] font-black uppercase tracking-[0.4em]">Neural RAG Workstation • v2.0</p>
            </div>
 
-           {!otpSent ? (
+           {step === 'auth' ? (
              <Card className="glass-card border-white/5 rounded-[2.5rem] shadow-2xl relative overflow-hidden transform hover:scale-[1.005] transition-transform duration-500">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary via-indigo-600 to-primary/40"></div>
                 <CardHeader className="p-10 pb-6 text-center">
@@ -211,6 +235,62 @@ export default function Auth({ initialEmail = '' }) {
                    </button>
                 </CardFooter>
              </Card>
+           ) : step === 'link' ? (
+             <Card className="glass-card border-white/5 rounded-[2.5rem] shadow-2xl relative overflow-hidden animate-zoom-in">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500/20"></div>
+                <CardHeader className="p-10 pb-6 text-center">
+                   <div className="w-16 h-16 bg-amber-500/10 rounded-[1.5rem] flex items-center justify-center text-amber-500 mx-auto mb-6 shadow-inner">
+                      <Zap className="w-8 h-8" />
+                   </div>
+                   <CardTitle className="text-2xl font-black text-white uppercase tracking-tight">Pareamento Telegram</CardTitle>
+                   <CardDescription className="text-foreground/40 font-bold text-sm pt-2">
+                     Vincule sua conta ao bot de segurança para ativação do terminal.
+                   </CardDescription>
+                </CardHeader>
+                <CardContent className="p-10 pt-4">
+                   <form onSubmit={handleSendOtp} className="space-y-6">
+                      <div className="space-y-2">
+                        <Label className="text-subtitle ml-1 text-amber-500/60">Seu Chat ID (Telegram)</Label>
+                        <div className="relative group">
+                          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground/20 group-focus-within:text-amber-500 transition-colors">
+                             <Command className="w-5 h-5" />
+                          </div>
+                          <Input 
+                            type="text" 
+                            required 
+                            className="bg-slate-950/40 border-white/10 h-14 pl-12 rounded-2xl focus-visible:ring-amber-500/40 text-white placeholder:text-white/5 font-bold"
+                            placeholder="Ex: 582910293"
+                            value={chatId}
+                            onChange={(e) => setChatId(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="p-4 bg-amber-500/5 rounded-2xl border border-amber-500/10 space-y-2">
+                         <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Como obter o ID?</p>
+                         <p className="text-[11px] text-foreground/40 font-bold leading-relaxed">
+                           Envie /start para o bot <span className="text-white">@userinfobot</span> no Telegram para visualizar seu código numérico de identificação.
+                         </p>
+                      </div>
+
+                      <Button 
+                        type="submit" 
+                        disabled={loading} 
+                        className="w-full h-14 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-black uppercase text-xs tracking-widest shadow-2xl shadow-amber-900/40 border-none transition-all"
+                      >
+                        {loading ? 'Processando...' : 'Vincular e Enviar Código'}
+                        {!loading && <ArrowRight className="w-4 h-4 ml-2" />}
+                      </Button>
+                      <button 
+                        type="button" 
+                        onClick={() => setStep('auth')}
+                        className="w-full text-[10px] font-black text-foreground/20 uppercase tracking-widest hover:text-white transition-colors"
+                      >
+                        Voltar ao login
+                      </button>
+                   </form>
+                </CardContent>
+             </Card>
            ) : (
              <Card className="glass-card border-white/5 rounded-[2.5rem] shadow-2xl relative overflow-hidden animate-zoom-in">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-emerald-400 to-emerald-500/20"></div>
@@ -253,7 +333,7 @@ export default function Auth({ initialEmail = '' }) {
                       <Button 
                         type="button"
                         variant="ghost" 
-                        onClick={() => setOtpSent(false)}
+                        onClick={() => setStep('auth')}
                         className="w-full h-12 rounded-2xl text-foreground/20 font-black uppercase text-[10px] tracking-widest hover:text-white"
                       >
                         <ArrowLeft className="w-3.5 h-3.5 mr-2" /> Voltar ao Login
