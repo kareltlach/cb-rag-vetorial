@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { 
   ArrowRight, 
+  ArrowLeft,
   Mail, 
   Lock, 
   CheckCircle, 
   AlertCircle, 
   ShieldCheck, 
   Zap,
+  Command,
   ChevronRight,
   ShieldAlert,
   Send,
