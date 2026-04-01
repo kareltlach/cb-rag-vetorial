@@ -307,8 +307,12 @@ class StatIncrement(BaseModel):
 async def list_documents():
     """Lista todos os documentos disponíveis para análise na pasta /data"""
     docs = []
-    base_dir = "data"
+    # Garantir que usamos o caminho absoluto relativo ao arquivo api.py
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.join(current_dir, "data")
+    
     if not os.path.exists(base_dir):
+        os.makedirs(base_dir) # Cria se não existir
         return []
         
     for root, dirs, files in os.walk(base_dir):
@@ -365,9 +369,9 @@ async def root():
 async def get_trending_stats():
     """Retorna estatísticas de trending (Mockup para evitar erros no frontend)"""
     return [
-        {"id": "1", "title": "Manual de Integração", "views": 1250, "copies": 450},
-        {"id": "2", "title": "Políticas de RH 2024", "views": 980, "copies": 320},
-        {"id": "3", "title": "Guia Multimodal Gemini", "views": 840, "copies": 150}
+        {"id": "1", "prompt_id": "p-manual_integracao", "views": 1250, "copies": 450},
+        {"id": "2", "prompt_id": "p-politicas_rh_2024", "views": 980, "copies": 320},
+        {"id": "3", "prompt_id": "p-guia_multimodal_gemini", "views": 840, "copies": 150}
     ]
 
 @app.post("/api/search", response_model=ChatResponse)
