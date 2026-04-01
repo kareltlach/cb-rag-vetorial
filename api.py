@@ -28,6 +28,19 @@ load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 
+def sanitize_filename(filename: str) -> str:
+    """Conserva apenas caracteres seguros para chaves de storage (Supabase/S3)"""
+    import unicodedata
+    import re
+    # 1. Normaliza unicode e remove acentos
+    nksf = unicodedata.normalize('NFKD', filename).encode('ascii', 'ignore').decode('ascii')
+    # 2. Remove caracteres especiais (incluindo emojis), exceto alphanumeric, . e _
+    # Substitui espaços por underscores
+    clean = re.sub(r'[^a-zA-Z0-9._-]', '_', nksf)
+    # Remove múltiplos underscores seguidos
+    clean = re.sub(r'_+', '_', clean).strip('_')
+    return clean
+
 class SupabaseLite:
     def __init__(self, url, key):
         self.url = f"{url.rstrip('/')}/rest/v1"
@@ -99,7 +112,7 @@ class SupabaseLite:
             return False
     # -----------------------------
 
-    async def increment_stat(self, prompt_id, stat_type):
+    async def increment_stat(self, prompt_id, stat_type, prompt_text=None):
         if not SUPABASE_URL or not SUPABASE_ANON_KEY:
             return None
         try:
@@ -109,6 +122,7 @@ class SupabaseLite:
                     # Se não existe, cria o registro inicial
                     payload = {
                         "prompt_id": prompt_id,
+                        "prompt_text": prompt_text if prompt_text else prompt_id,
                         "views": 1 if stat_type == "views" else 0,
                         "copies": 1 if stat_type == "copies" else 0,
                         "shares": 1 if stat_type == "shares" else 0
@@ -118,6 +132,12 @@ class SupabaseLite:
                     # Se existe, incrementa o valor atual
                     new_val = current.get(stat_type, 0) + 1
                     payload = {stat_type: new_val}
+                    # Se não tem o texto ou estamos passando um novo, atualiza
+                    if prompt_text:
+                        payload["prompt_text"] = prompt_text
+                    elif not current.get("prompt_text"):
+                        payload["prompt_text"] = prompt_id
+                    
                     url = f"{self.url}/prompt_statistics?prompt_id=eq.{prompt_id}"
                     await client.patch(url, headers=self.headers, json=payload)
                 
@@ -131,13 +151,99 @@ class SupabaseLite:
             return []
         try:
             async with httpx.AsyncClient() as client:
-                # Ordena por visualizações descendente
-                url = f"{self.url}/prompt_statistics?order=views.desc&limit={limit}"
+                # Filtra prompts que tenham ao menos 1 visualização, cópia ou compartilhamento
+                # E ordena por visualizações descendente
+                url = f"{self.url}/prompt_statistics?or=(views.gt.0,copies.gt.0,shares.gt.0)&order=views.desc&limit={limit}"
                 response = await client.get(url, headers=self.headers)
                 return response.json()
         except Exception as e:
             print(f"Erro Supabase Trending: {e}")
             return []
+
+    # --- DOCUMENT MANAGEMENT METHODS ---
+    async def db_list_documents(self):
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.url}/documents?order=created_at.desc"
+                response = await client.get(url, headers=self.headers)
+                return response.json()
+        except Exception as e:
+            print(f"Erro Supabase LIST DOCUMENTS: {e}")
+            return []
+
+    async def db_register_document(self, name, type, supabase_url):
+        try:
+            async with httpx.AsyncClient() as client:
+                payload = {
+                    "name": name,
+                    "type": type,
+                    "supabase_url": supabase_url,
+                    "pinecone_indexed": False
+                }
+                await client.post(f"{self.url}/documents", headers=self.headers, json=payload)
+                return True
+        except Exception as e:
+            print(f"Erro Supabase REGISTER DOCUMENT: {e}")
+            return False
+
+    async def db_mark_as_indexed(self, name):
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.url}/documents?name=eq.{name}"
+                await client.patch(url, headers=self.headers, json={"pinecone_indexed": True})
+                return True
+        except Exception as e:
+            print(f"Erro Supabase MARK AS INDEXED: {e}")
+            return False
+
+    async def db_delete_document(self, name):
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.url}/documents?name=eq.{name}"
+                await client.delete(url, headers=self.headers)
+                return True
+        except Exception as e:
+            print(f"Erro Supabase DELETE DOCUMENT DB: {e}")
+            return False
+
+    # --- STORAGE HELPERS (via httpx to Supabase Storage API) ---
+    async def storage_upload(self, bucket, path, file_content, content_type):
+        from urllib.parse import quote
+        try:
+            # Importante: O path (nome do arquivo) deve ser URL-encoded para o Supabase Storage
+            safe_path = quote(path)
+            storage_url = f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/{bucket}/{safe_path}"
+            
+            upload_headers = self.headers.copy()
+            upload_headers["Content-Type"] = content_type
+            
+            async with httpx.AsyncClient() as client:
+                res = await client.post(storage_url, headers=upload_headers, content=file_content)
+                if res.status_code in [200, 201]:
+                    return f"{SUPABASE_URL}/storage/v1/object/public/{bucket}/{safe_path}"
+                
+                err_msg = f"HTTP {res.status_code}: {res.text}"
+                print(f"Erro Storage Upload: {err_msg}")
+                return {"error": err_msg}
+        except Exception as e:
+            err_msg = str(e)
+            print(f"Erro Storage Upload Exception: {err_msg}")
+            return {"error": err_msg}
+
+    async def storage_delete(self, bucket, path):
+        from urllib.parse import quote
+        try:
+            safe_path = quote(path)
+            storage_url = f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/{bucket}/{safe_path}"
+            async with httpx.AsyncClient() as client:
+                res = await client.delete(storage_url, headers=self.headers)
+                if res.status_code == 200:
+                    return True
+                print(f"Erro Storage DELETE ({res.status_code}): {res.text}")
+                return False
+        except Exception as e:
+            print(f"Erro Storage DELETE Exception: {e}")
+            return False
 
 # --- Ingestão / Helper Functions ---
 def sanitize_vector_id(name: str):
@@ -180,43 +286,70 @@ async def upload_to_gemini(file_path: str):
         raise ValueError(f"Falha ao processar o arquivo no Gemini {file.name}")
     return file
 
-async def process_and_index_file_internal(file_path: str, mod_type: str):
+async def process_and_index_file_internal(file_source: str, mod_type: str, file_name: str):
     if not index: return
     
-    if mod_type == "document" and file_path.lower().endswith(".pdf"):
-        chunks = extract_text_chunks_from_pdf(file_path)
-        for i, chunk_text in enumerate(chunks):
-            formatted_text = f"task: search result | content: {chunk_text}"
-            res = client.models.embed_content(model=EMBEDDING_MODEL, contents=formatted_text)
-            vector = res.embeddings[0].values
-            sanitized_name = sanitize_vector_id(os.path.basename(file_path))
-            cid = f"{sanitized_name}_ch_{i}_{str(uuid.uuid4())[:8]}"
-            # Normalizar caminho para o Pinecone (sempre use / mesmo no Windows)
-            normalized_path = file_path.replace('\\', '/')
-            metadata = {
-                "source": normalized_path,
-                "type": "pdf_chunk",
-                "text_content": chunk_text,
-                "chunk_index": i
-            }
-            index.upsert(vectors=[{"id": cid, "values": vector, "metadata": metadata}])
+    # file_source agora é a URL do Supabase Storage
+    # Para PDFs, precisamos fazer o download temporário para ler com PdfReader
+    local_tmp_path = None
+    if mod_type == "document" and file_name.lower().endswith(".pdf"):
+        try:
+            local_tmp_path = os.path.join("tmp", file_name)
+            if not os.path.exists("tmp"): os.makedirs("tmp")
+            async with httpx.AsyncClient() as client_http:
+                resp = await client_http.get(file_source)
+                with open(local_tmp_path, "wb") as f:
+                    f.write(resp.content)
+            
+            chunks = extract_text_chunks_from_pdf(local_tmp_path)
+            for i, chunk_text in enumerate(chunks):
+                formatted_text = f"task: search result | content: {chunk_text}"
+                res = client.models.embed_content(model=EMBEDDING_MODEL, contents=formatted_text)
+                vector = res.embeddings[0].values
+                sanitized_name = sanitize_vector_id(file_name)
+                cid = f"{sanitized_name}_ch_{i}_{str(uuid.uuid4())[:8]}"
+                
+                metadata = {
+                    "source": file_source, # URL Supabase
+                    "name": file_name,
+                    "type": "pdf_chunk",
+                    "text_content": chunk_text,
+                    "chunk_index": i
+                }
+                index.upsert(vectors=[{"id": cid, "values": vector, "metadata": metadata}])
+        except Exception as e:
+            print(f"Erro processamento PDF: {e}")
+        finally:
+            if local_tmp_path and os.path.exists(local_tmp_path):
+                os.remove(local_tmp_path)
         return
 
-    # Multimodal (Imagem, Vídeo)
-    sanitized_filename = sanitize_vector_id(os.path.basename(file_path))
-    fid = f"mm_{sanitized_filename}_{str(uuid.uuid4())[:8]}"
-    # Normalizar caminho para o Pinecone (sempre use / mesmo no Windows)
-    normalized_path = file_path.replace('\\', '/')
-    metadata = {"source": normalized_path, "type": mod_type}
+    # Multimodal (Imagem, Vídeo) - Gemini pode processar via URL diretamente em alguns contextos,
+    # mas aqui usamos o upload_to_gemini que espera um path local.
+    # Vamos baixar temporariamente.
     try:
-        uploaded_file = await upload_to_gemini(file_path)
+        local_tmp_path = os.path.join("tmp", file_name)
+        if not os.path.exists("tmp"): os.makedirs("tmp")
+        async with httpx.AsyncClient() as client_http:
+            resp = await client_http.get(file_source)
+            with open(local_tmp_path, "wb") as f:
+                f.write(resp.content)
+
+        sanitized_filename = sanitize_vector_id(file_name)
+        fid = f"mm_{sanitized_filename}_{str(uuid.uuid4())[:8]}"
+        metadata = {"source": file_source, "name": file_name, "type": mod_type}
+        
+        uploaded_file = await upload_to_gemini(local_tmp_path)
         res = client.models.embed_content(model=EMBEDDING_MODEL, contents=uploaded_file)
         vector = res.embeddings[0].values
         metadata["gemini_file_uri"] = uploaded_file.uri
-        metadata["text_content"] = f"Conteúdo Multimodal: {os.path.basename(file_path)}"
+        metadata["text_content"] = f"Conteúdo Multimodal: {file_name}"
         index.upsert(vectors=[{"id": fid, "values": vector, "metadata": metadata}])
     except Exception as e:
         print(f"Erro indexação multimodal: {e}")
+    finally:
+        if local_tmp_path and os.path.exists(local_tmp_path):
+            os.remove(local_tmp_path)
 
 sb_lite = SupabaseLite(SUPABASE_URL, SUPABASE_ANON_KEY) if SUPABASE_URL and SUPABASE_ANON_KEY else None
 
@@ -235,13 +368,15 @@ class LocalStatsStore:
         except:
             return {"views": 0, "copies": 0, "shares": 0}
             
-    def increment(self, prompt_id, type):
+    def increment(self, prompt_id, type, prompt_text=None):
         try:
             with open(self.filename, 'r') as f:
                 data = json.load(f)
             if prompt_id not in data:
-                data[prompt_id] = {"views": 0, "copies": 0, "shares": 0}
+                data[prompt_id] = {"views": 0, "copies": 0, "shares": 0, "prompt_text": prompt_text}
             data[prompt_id][type] = data[prompt_id].get(type, 0) + 1
+            if prompt_text:
+                data[prompt_id]["prompt_text"] = prompt_text
             with open(self.filename, 'w') as f:
                 json.dump(data, f)
             return data[prompt_id]
@@ -366,6 +501,7 @@ class ChatResponse(BaseModel):
 
 class StatIncrement(BaseModel):
     prompt_id: str
+    text: str
     type: str  # 'views', 'copies', 'shares'
 
 class OTPSendRequest(BaseModel):
@@ -378,61 +514,87 @@ class OTPVerifyRequest(BaseModel):
 
 @app.get("/api/documents")
 async def list_documents():
-    """Lista todos os documentos disponíveis para análise na pasta /data"""
-    docs = []
-    # Garantir que usamos o caminho absoluto relativo ao arquivo api.py
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir = os.path.join(current_dir, "data")
-    
-    if not os.path.exists(base_dir):
-        os.makedirs(base_dir) # Cria se não existir
-        return []
-        
-    for root, dirs, files in os.walk(base_dir):
-        for file in files:
-            ext = file.lower().split('.')[-1]
-            # Filtramos apenas as extensões que o Gemini e Pinecone suportam no nosso workflow
-            if ext in ['pdf', 'png', 'jpg', 'jpeg', 'mp4', 'mov', 'webm']:
-                rel_path = os.path.relpath(os.path.join(root, file), base_dir).replace('\\', '/')
-                docs.append({
-                    "name": file,
-                    "type": ext,
-                    "path": rel_path
-                })
-    return docs
+    """Lista todos os documentos disponíveis indexados no Supabase"""
+    if not sb_lite: return []
+    return await sb_lite.db_list_documents()
 
 @app.delete("/api/documents/{filename:path}")
 async def delete_document(filename: str):
-    """Remove um documento da pasta /data e seus vetores correspondentes no Pinecone"""
-    # Decodifica o caminho (útil para subpastas codificadas na URL)
-    rel_path = unquote(filename)
-    # Reconstrói o caminho completo no disco usando o separador correto do OS
-    file_path = os.path.join("data", rel_path)
+    """Remove um documento do Supabase Storage, DB e seus vetores no Pinecone"""
+    import traceback
+    from urllib.parse import unquote
     
-    if not os.path.exists(file_path):
-        # Tenta sanitizar o caminho caso tenha vindo com barras invertidas
-        file_path = os.path.join("data", rel_path.replace('\\', os.sep).replace('/', os.sep))
-        if not os.path.exists(file_path):
-            raise HTTPException(status_code=404, detail=f"Arquivo {rel_path} não encontrado no servidor em {file_path}")
+    # Decodifica o nome (FastAPI já decodifica, unquote garante compatibilidade com camadas extras)
+    file_name = unquote(filename)
+    
+    if not sb_lite: 
+        raise HTTPException(status_code=503, detail="Supabase não inicializado.")
+
+    print(f"DEBUG: Iniciando expurgação atômica de: {file_name}")
 
     try:
-        # 1. Remover do Pinecone usando filtro pelo metadado 'source'
-        if index:
-            # SEMPRE normaliza para forward slashes para bater com o padrão de indexação
-            normalized_search_path = rel_path.replace('\\', '/')
-            if not normalized_search_path.startswith('data/'):
-                normalized_search_path = f"data/{normalized_search_path}"
-            
-            index.delete(filter={"source": {"$eq": normalized_search_path}})
-            print(f"Vetores do documento {normalized_search_path} removidos do Pinecone.")
-
-        # 2. Remover arquivo físico local
-        os.remove(file_path)
-        return {"status": "success", "message": f"Documento {rel_path} e seus índices vetoriais foram removidos com sucesso."}
+        # 1. Buscar metadados para ter a URL original (necessária para o Pinecone)
+        docs = await sb_lite.db_list_documents() or []
+        doc_meta = next((d for d in docs if d["name"] == file_name), None)
         
+        # Se não achou pelo nome original, tentamos uma busca flexível se necessário, 
+        # mas aqui focamos na consistência do nome enviado.
+        if not doc_meta:
+            raise HTTPException(status_code=404, detail=f"Documento '{file_name}' não encontrado no registro central.")
+
+        supabase_url = doc_meta.get("supabase_url")
+        
+        # 2. Remover do Pinecone (Operação Crítica)
+        if index and supabase_url:
+            try:
+                # O filtro por metadado 'source' é a forma mais eficaz de remover todos os chunks
+                index.delete(filter={"source": {"$eq": supabase_url}})
+                print(f"SUCESSO [Pinecone]: Vetores de {file_name} removidos.")
+            except Exception as pine_err:
+                print(f"ALERTA [Pinecone]: Falha ao remover vetores: {pine_err}")
+                # Continuamos a limpeza mesmo se o Pinecone falhar (ex: plano Starter sem filtro)
+
+        # 3. Remover do Supabase Storage
+        try:
+            # Extrair o nome real do arquivo (storage key) da URL para remoção
+            # Ex: https://.../public/rag-documents/Playbook_Test.pdf -> Playbook_Test.pdf
+            storage_key = supabase_url.split('/')[-1]
+            # O link público pode estar codificado, precisamos decodificar o key
+            from urllib.parse import unquote
+            storage_path = unquote(storage_key)
+            
+            storage_success = await sb_lite.storage_delete("rag-documents", storage_path)
+            if storage_success:
+                print(f"SUCESSO [Storage]: Arquivo {storage_path} removido.")
+        except Exception as storage_err:
+            print(f"ALERTA [Storage]: Falha ao remover arquivo: {storage_err}")
+
+        # 4. Remover do Supabase Database (Limpa o estado na UI)
+        db_success = await sb_lite.db_delete_document(file_name)
+        if not db_success:
+            print(f"ERRO [Database]: Não foi possível remover o registro de {file_name}.")
+            # Se falhou aqui, o arquivo pode reaparecer na UI após refresh
+
+        return {
+            "status": "success", 
+            "message": f"Fonte '{file_name}' expurgada com sucesso dos ecossistemas ativos.",
+            "details": {
+                "pinecone": "removed_or_skipped",
+                "storage": "attempted",
+                "database": "cleaned" if db_success else "failed"
+            }
+        }
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Erro ao deletar documento {filename}: {e}")
-        raise HTTPException(status_code=500, detail=f"Erro ao remover documento: {str(e)}")
+        error_trace = traceback.format_exc()
+        print(f"FALHA CRÍTICA na operação de delete para {filename}:")
+        print(error_trace)
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Erro interno ao expurgar documento: {str(e)}"
+        )
 
 @app.get("/api")
 async def root():
@@ -484,8 +646,12 @@ async def search(search_query: SearchQuery):
             # Formatar para o frontend (Exibição dos Cards)
             metadata = match.metadata
             if "source" in metadata:
-                rel_path = metadata["source"].replace("data/", "")
-                metadata["media_url"] = f"/media/{rel_path}"
+                source_url = metadata["source"]
+                if source_url.startswith("http"):
+                    metadata["media_url"] = source_url
+                else:
+                    rel_path = source_url.replace("data/", "")
+                    metadata["media_url"] = f"/media/{rel_path}"
                 
             formatted_results.append(SearchResult(
                 id=match.id,
@@ -537,10 +703,27 @@ async def get_trending_stats():
     # Tenta Supabase
     if sb_lite:
         data = await sb_lite.get_trending()
-        if data: return data
+        if data:
+            # Garanto que local e supabase estão sincronizados
+            return data
     
-    # Fallback vazio
-    return []
+    # Fallback para local formatado como o trending do supabase
+    try:
+        with open("stats.json", 'r') as f:
+            data = json.load(f)
+        # Converte dicionário para lista de objetos sortidos por views
+        trending_list = []
+        for pid, stats in data.items():
+            # Filtra apenas quem tem alguma métrica > 0
+            if stats.get("views", 0) > 0 or stats.get("copies", 0) > 0 or stats.get("shares", 0) > 0:
+                trending_item = stats.copy()
+                trending_item["prompt_id"] = pid
+                trending_list.append(trending_item)
+        
+        trending_list.sort(key=lambda x: x.get("views", 0), reverse=True)
+        return trending_list[:5]
+    except:
+        return []
 
 @app.get("/api/stats/{prompt_id}")
 async def get_prompt_stats(prompt_id: str):
@@ -553,16 +736,17 @@ async def get_prompt_stats(prompt_id: str):
 
 class StatIncrement(BaseModel):
     prompt_id: str
+    text: str
     type: str  # 'views', 'copies', 'shares'
 
 @app.post("/api/stats/increment")
 async def increment_stat(data: StatIncrement):
     result = None
     if sb_lite:
-        result = await sb_lite.increment_stat(data.prompt_id, data.type)
+        result = await sb_lite.increment_stat(data.prompt_id, data.type, data.text)
 
     # Sempre atualiza o local também e usa como fallback
-    local_result = _local_stats.increment(data.prompt_id, data.type)
+    local_result = _local_stats.increment(data.prompt_id, data.type, data.text)
     
     return result if result else local_result
 
@@ -614,25 +798,49 @@ async def verify_otp(req: OTPVerifyRequest):
 
 @app.post("/api/upload")
 async def upload_file_endpoint(file: UploadFile = File(...)):
-    if not os.path.exists("data"):
-        os.makedirs("data")
+    if not sb_lite: raise HTTPException(status_code=503, detail="Supabase não inicializado.")
 
-    file_path = os.path.join("data", file.filename)
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    # 1. Ler conteúdo para memória
+    file_content = await file.read()
+    
+    # 2. Sanitização (Estratégia Dual-Filename)
+    # Original: "📘 Playbook.pdf" -> UI
+    # Sanitizado: "Playbook.pdf" -> Storage/Pinecone
+    original_filename = file.filename
+    sanitized_name = sanitize_filename(original_filename)
+    
+    # Se a sanitização removeu tudo, geramos um ID único
+    if not sanitized_name or sanitized_name == ".":
+        sanitized_name = f"upload_{uuid.uuid4().hex[:8]}"
 
-    # Determinar tipo
-    ext = file.filename.lower().split('.')[-1]
-    mod_type = "document" # Padrão
+    # 3. Upload para Supabase Storage usando o nome sanitizado
+    upload_result = await sb_lite.storage_upload("rag-documents", sanitized_name, file_content, file.content_type)
+    
+    if isinstance(upload_result, dict) and "error" in upload_result:
+        raise HTTPException(status_code=500, detail=f"Falha Supabase Storage: {upload_result['error']}")
+    
+    if not upload_result:
+        raise HTTPException(status_code=500, detail="Falha ao fazer upload para nuvem Supabase (URL não retornada).")
+
+    supabase_url = upload_result
+
+    # 4. Registrar no Supabase Database (Usando o nome ORIGINAL para a UI)
+    ext = original_filename.lower().split('.')[-1]
+    mod_type = "document"
     if ext in ['png', 'jpg', 'jpeg']: mod_type = "image"
     elif ext in ['mp4', 'mov', 'webm']: mod_type = "video"
     
-    # Processamento assíncrono (em background seria ideal, mas fazemos direto para simplificar o feedback)
+    await sb_lite.db_register_document(original_filename, mod_type, supabase_url)
+
+    # 5. Processamento assíncrono para Pinecone (Usando o nome original para log/mark_indexed)
     try:
-        await process_and_index_file_internal(file_path, mod_type)
-        return {"status": "success", "filename": file.filename}
+        await process_and_index_file_internal(supabase_url, mod_type, original_filename)
+        await sb_lite.db_mark_as_indexed(original_filename)
+        return {"status": "success", "filename": original_filename, "url": supabase_url}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Tenta remover do banco se falhar a indexação
+        await sb_lite.db_delete_document(original_filename)
+        raise HTTPException(status_code=500, detail=f"Erro na indexação vetorial: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

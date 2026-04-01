@@ -1,234 +1,289 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
+import { 
+  ArrowRight, 
+  Mail, 
+  Lock, 
+  CheckCircle, 
+  AlertCircle, 
+  ShieldCheck, 
+  Zap,
+  ChevronRight,
+  ShieldAlert,
+  Send,
+  MessageSquare,
+  Eye,
+  EyeOff
+} from 'lucide-react';
+import { Button } from './components/ui/button';
+import { Input } from './components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from './components/ui/card';
+import { Label } from './components/ui/label';
+import { Badge } from './components/ui/badge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip';
+import { Toaster } from './components/ui/sonner';
+import { toast } from 'sonner';
+import { cn } from './lib/utils';
 
-const Auth = ({ initialEmail }) => {
+export default function Auth({ initialEmail = '' }) {
   const [loading, setLoading] = useState(false);
-  const [email, setEmail] = useState(initialEmail || '');
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [message, setMessage] = useState('');
-  const [showOTP, setShowOTP] = useState(initialEmail ? true : false);
-  const [telegramId, setTelegramId] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState('');
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
+  const [authMode, setAuthMode] = useState('login'); // 'login' or 'signup'
+  const [showPassword, setShowPassword] = useState(false);
+  const [verificationPending, setVerificationPending] = useState(false);
 
-  const API_BASE = window.location.origin.includes('localhost') ? 'http://localhost:8001' : '';
+  useEffect(() => {
+    if (initialEmail) setEmail(initialEmail);
+  }, [initialEmail]);
 
-  const handleAuth = async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setMessage('');
-
-    // Preenche automaticamente o domínio se não estiver presente
-    let finalEmail = email.trim();
-    if (finalEmail && !finalEmail.includes('@')) {
-      finalEmail += '@casasbahia.com.br';
-    }
-
     try {
-      if (isSignUp) {
-        if (!finalEmail.toLowerCase().endsWith('@casasbahia.com.br')) {
-          setLoading(false);
-          setMessage('Erro: Use apenas e-mails corporativos @casasbahia.com.br para se cadastrar.');
-          return;
-        }
-        const { error } = await supabase.auth.signUp({
-          email: finalEmail,
-          password,
-        });
-        if (error) throw error;
-        setMessage('Cadastro realizado! Verifique seu e-mail (se habilitado) ou tente logar.');
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      
+      toast.success("Credenciais validadas. Iniciando handshake MFA...");
+      
+      // Envia OTP via Telegram
+      const otpRes = await fetch('http://localhost:8001/api/auth/otp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      
+      if (otpRes.ok) {
+        setOtpSent(true);
+        toast.info("Código de segurança enviado via Telegram.");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: finalEmail,
-          password,
-        });
-        if (error) throw error;
-
-        // Após login Sucesso, verifica status do Telegram
-        const statusRes = await fetch(`${API_BASE}/api/auth/otp/status/${finalEmail}`);
-        const statusData = await statusRes.json();
-        
-        if (!statusData.is_verified) {
-          setShowOTP(true);
-        }
+        toast.error("Cluster MFA indisponível temporariamente.");
       }
     } catch (error) {
-      setMessage(error.error_description || error.message);
+      toast.error(`Falha na Autenticação: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSendOTP = async () => {
-    if (!telegramId) return setMessage('Erro: Informe seu ID do Telegram.');
-    setIsSendingOtp(true);
-    setMessage('');
+  const handleSignUp = async (e) => {
+    e.preventDefault();
+    setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/auth/otp/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.includes('@') ? email : `${email}@casasbahia.com.br`, chat_id: telegramId })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail);
-      setMessage('Sucesso! Código enviado ao seu Telegram.');
-    } catch (e) {
-      setMessage('Falha ao enviar: ' + e.message);
+      const { error } = await supabase.auth.signUp({ email, password });
+      if (error) throw error;
+      toast.success("Consulte seu e-mail para confirmar a conta.");
+      setAuthMode('login');
+    } catch (error) {
+      toast.error(`Erro no Registro: ${error.message}`);
     } finally {
-      setIsSendingOtp(false);
+      setLoading(false);
     }
   };
 
-  const handleVerifyOTP = async () => {
-    if (!otpCode) return setMessage('Erro: Digite o código de 6 dígitos.');
-    setIsVerifying(true);
-    const fullEmail = email.includes('@') ? email : `${email}@casasbahia.com.br`;
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/auth/otp/verify`, {
+      const res = await fetch('http://localhost:8001/api/auth/otp/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: fullEmail, otp_code: otpCode })
+        body: JSON.stringify({ email, code: otpCode })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail);
       
-      // Sucesso! Atualiza o estado global recarregando ou emitindo evento
-      window.location.reload(); 
-    } catch (e) {
-      setMessage('Falha na verificação: ' + e.message);
+      if (res.ok) {
+        toast.success("Handshake completo. Acesso concedido.");
+        window.location.reload();
+      } else {
+        toast.error("Assinatura de segurança inválida.");
+      }
+    } catch (error) {
+      toast.error("Erro crítico na verificação.");
     } finally {
-      setIsVerifying(false);
+      setLoading(false);
     }
   };
-
-  if (showOTP) {
-    return (
-      <div className="auth-container">
-        <div className="auth-card">
-          <div className="auth-header">
-            <div className="logo-sparkle">🔒</div>
-            <h2>Verificação de Segurança</h2>
-            <p>Proteja sua conta com o Telegram</p>
-          </div>
-
-          <div className="otp-instructions">
-            <p>1. Vá ao Telegram e procure por <strong>@userinfobot</strong> para ver seu ID.</p>
-            <p>2. Copie o número e cole no campo abaixo.</p>
-            <p>3. Clique em enviar e aguarde o código no <strong>@cb_rag_auth_bot</strong>.</p>
-          </div>
-
-          <div className="auth-form">
-            <div className="input-group">
-              <label>Seu ID do Telegram</label>
-              <div className="input-with-btn">
-                <input
-                  type="text"
-                  placeholder="Ex: 123456789"
-                  value={telegramId}
-                  onChange={(e) => setTelegramId(e.target.value)}
-                />
-                <button 
-                  onClick={handleSendOTP} 
-                  className="send-otp-btn"
-                  disabled={isSendingOtp}
-                >
-                  {isSendingOtp ? '...' : 'Enviar'}
-                </button>
-              </div>
-            </div>
-
-            <div className="input-group">
-              <label>Código de 6 dígitos</label>
-              <input
-                type="text"
-                maxLength="6"
-                placeholder="000000"
-                className="otp-input"
-                value={otpCode}
-                onChange={(e) => setOtpCode(e.target.value)}
-              />
-            </div>
-
-            <button 
-              onClick={handleVerifyOTP} 
-              className="auth-submit-btn" 
-              disabled={isVerifying}
-            >
-              {isVerifying ? <div className="loader-sm"></div> : 'Confirmar e Entrar'}
-            </button>
-          </div>
-
-          {message && <div className={`auth-message ${message.includes('Erro') || message.includes('Falha') ? 'error' : 'success'}`}>{message}</div>}
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="auth-container">
-      <div className="auth-card">
-        <div className="auth-header">
-          <div className="logo-sparkle">✨</div>
-          <h2>Casas Bahia RAG</h2>
-          <p>{isSignUp ? 'Crie sua conta premium' : 'Acesse seu painel inteligente'}</p>
+    <TooltipProvider>
+      <div className="min-h-screen w-full flex items-center justify-center bg-[#020617] font-sans selection:bg-primary/30 relative overflow-hidden">
+        <Toaster position="top-center" richColors theme="dark" />
+        
+        {/* Abstract Background Decor */}
+        <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
+           <div className="absolute top-[-10%] right-[-10%] w-[60%] h-[60%] bg-primary/5 blur-[120px] rounded-full animate-pulse-slow"></div>
+           <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600/5 blur-[100px] rounded-full animate-pulse-slow" style={{ animationDelay: '2s' }}></div>
         </div>
 
-        <form onSubmit={handleAuth} className="auth-form">
-          <div className="input-group">
-            <label>E-mail ou Usuário</label>
-            <div className="email-input-wrapper">
-              <input
-                type="text"
-                placeholder="nome.sobrenome"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-              <span className="email-suffix">@casasbahia.com.br</span>
-            </div>
-          </div>
-
-          <div className="input-group">
-            <label>Senha</label>
-            <input
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
+        <div className="w-full max-w-md p-6 relative z-10 animate-fade-in-up">
+           {/* Logo / Brand */}
+           <div className="flex flex-col items-center mb-12 group">
+            <img 
+              src="https://upload.wikimedia.org/wikipedia/commons/9/97/Casas_Bahia_logo_2020.svg" 
+              alt="Casas Bahia Logo" 
+              className="h-7 w-auto object-contain mb-4 transition-all duration-500 hover:scale-105"
             />
-          </div>
+              <p className="text-foreground/30 text-[10px] font-black uppercase tracking-[0.4em]">Neural RAG Workstation • v2.0</p>
+           </div>
 
-          <button type="submit" className="auth-submit-btn" disabled={loading}>
-            {loading ? (
-              <div className="loader-sm"></div>
-            ) : (
-              isSignUp ? 'Cadastrar Agora' : 'Entrar na Plataforma'
-            )}
-          </button>
-        </form>
+           {!otpSent ? (
+             <Card className="glass-card border-white/5 rounded-[2.5rem] shadow-2xl relative overflow-hidden transform hover:scale-[1.005] transition-transform duration-500">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary via-indigo-600 to-primary/40"></div>
+                <CardHeader className="p-10 pb-6 text-center">
+                   <CardTitle className="text-2xl font-black text-white uppercase tracking-tight">
+                     {authMode === 'login' ? 'Autenticação' : 'Registro de Terminal'}
+                   </CardTitle>
+                   <CardDescription className="text-foreground/40 font-bold text-sm pt-2">
+                     {authMode === 'login' ? 'Conecte-se ao ecossistema de inteligência privada.' : 'Crie sua identidade operacional no cluster.'}
+                   </CardDescription>
+                </CardHeader>
+                <CardContent className="p-10 pt-4">
+                   <form onSubmit={authMode === 'login' ? handleLogin : handleSignUp} className="space-y-6">
+                      <div className="space-y-2">
+                        <Label className="text-subtitle ml-1">Usuário Operacional</Label>
+                        <div className="relative group">
+                          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground/20 group-focus-within:text-primary transition-colors z-10">
+                             <Mail className="w-5 h-5" />
+                          </div>
+                          <Input 
+                            type="text" 
+                            required 
+                            className="bg-slate-950/40 border-white/10 h-14 pl-12 pr-[140px] rounded-2xl focus-visible:ring-primary/40 text-white placeholder:text-white/5 font-bold"
+                            placeholder="seu.usuario"
+                            value={email.split('@')[0]}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val.includes('@')) {
+                                setEmail(val);
+                              } else {
+                                setEmail(val ? `${val}@casasbahia.com.br` : '');
+                              }
+                            }}
+                          />
+                          <div className="absolute right-6 top-1/2 -translate-y-1/2 text-foreground/20 font-black text-[11px] uppercase tracking-widest pointer-events-none select-none">
+                            @casasbahia.com.br
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-subtitle ml-1">Assinatura Digital (Senha)</Label>
+                        <div className="relative group">
+                          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground/20 group-focus-within:text-primary transition-colors">
+                             <Lock className="w-5 h-5" />
+                          </div>
+                          <Input 
+                            type={showPassword ? "text" : "password"} 
+                            required 
+                            className="bg-slate-950/40 border-white/10 h-14 pl-12 pr-12 rounded-2xl focus-visible:ring-primary/40 text-white placeholder:text-white/5 font-bold"
+                            placeholder="••••••••••••"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-foreground/20 hover:text-primary transition-colors"
+                          >
+                            {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                          </button>
+                        </div>
+                      </div>
+                      <Button 
+                        type="submit" 
+                        disabled={loading} 
+                        className="w-full h-14 rounded-2xl bg-primary hover:bg-primary/80 text-white font-black uppercase text-xs tracking-widest shadow-2xl shadow-primary/20 transition-all active:scale-95"
+                      >
+                        {loading ? 'Sincronizando...' : (authMode === 'login' ? 'Acessar Workspace' : 'Confirmar Registro')}
+                        {!loading && <ChevronRight className="w-4 h-4 ml-2" />}
+                      </Button>
+                   </form>
+                </CardContent>
+                <CardFooter className="p-10 pt-0 flex justify-center">
+                   <button 
+                     onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}
+                     className="text-[11px] font-black uppercase tracking-widest text-foreground/30 hover:text-primary transition-colors"
+                   >
+                     {authMode === 'login' ? 'Necessita acesso? Registrar terminal' : 'Já possui identidade? Autenticar'}
+                   </button>
+                </CardFooter>
+             </Card>
+           ) : (
+             <Card className="glass-card border-white/5 rounded-[2.5rem] shadow-2xl relative overflow-hidden animate-zoom-in">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-emerald-400 to-emerald-500/20"></div>
+                <CardHeader className="p-10 pb-6 text-center">
+                   <div className="w-16 h-16 bg-emerald-500/10 rounded-[1.5rem] flex items-center justify-center text-emerald-500 mx-auto mb-6 shadow-inner animate-pulse">
+                      <ShieldCheck className="w-8 h-8" />
+                   </div>
+                   <CardTitle className="text-2xl font-black text-white uppercase tracking-tight">Verificação 2-Fatores</CardTitle>
+                   <CardDescription className="text-foreground/40 font-bold text-sm pt-2">
+                     Insira o código enviado para o seu dispositivo Telegram pareado.
+                   </CardDescription>
+                </CardHeader>
+                <CardContent className="p-10 pt-4">
+                   <form onSubmit={handleVerifyOtp} className="space-y-6">
+                      <div className="space-y-2">
+                        <Label className="text-subtitle ml-1 text-emerald-500/60">Código de Autorização</Label>
+                        <div className="relative group">
+                          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground/20 group-focus-within:text-emerald-500 transition-colors">
+                             <MessageSquare className="w-5 h-5" />
+                          </div>
+                          <Input 
+                            type="text" 
+                            required 
+                            className="bg-slate-950/40 border-white/10 h-14 pl-12 rounded-2xl focus-visible:ring-emerald-500/40 text-white placeholder:text-white/5 font-black text-center tracking-[0.5em] text-lg"
+                            placeholder="000000"
+                            maxLength={6}
+                            value={otpCode}
+                            onChange={(e) => setOtpCode(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <Button 
+                        type="submit" 
+                        disabled={loading} 
+                        className="w-full h-14 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase text-xs tracking-widest shadow-2xl shadow-emerald-900/40 border-none transition-all"
+                      >
+                        {loading ? 'Verificando...' : 'Confirmar Identidade'}
+                        {!loading && <ShieldCheck className="w-4 h-4 ml-2" />}
+                      </Button>
+                      <Button 
+                        type="button"
+                        variant="ghost" 
+                        onClick={() => setOtpSent(false)}
+                        className="w-full h-12 rounded-2xl text-foreground/20 font-black uppercase text-[10px] tracking-widest hover:text-white"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5 mr-2" /> Voltar ao Login
+                      </Button>
+                   </form>
+                </CardContent>
+                <CardFooter className="p-10 pt-0">
+                   <div className="flex items-center gap-3 w-full p-4 bg-white/[0.02] border border-white/5 rounded-2xl">
+                      <ShieldAlert className="w-5 h-5 text-emerald-500/40" />
+                      <p className="text-[10px] font-bold text-foreground/30 leading-tight">Canal de segurança criptografado P2P via Telegram API.</p>
+                   </div>
+                </CardFooter>
+             </Card>
+           )}
 
-        {message && <div className={`auth-message ${message.includes('Erro') || message.includes('Falha') ? 'error' : 'success'}`}>{message}</div>}
-
-        <div className="auth-footer">
-          <button 
-            type="button" 
-            className="toggle-auth-btn"
-            onClick={() => setIsSignUp(!isSignUp)}
-          >
-            {isSignUp ? 'Já tem uma conta? Entre aqui' : 'Não tem conta? Cadastre-se grátis'}
-          </button>
+           {/* Security Badges Group */}
+           <div className="mt-12 flex justify-center gap-8 opacity-20 filter grayscale group-hover:grayscale-0 transition-all duration-700">
+              <div className="flex flex-col items-center gap-2">
+                 <ShieldCheck className="w-5 h-5 mb-1" />
+                 <span className="text-[8px] font-black uppercase tracking-widest">Encrypted</span>
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                 <Zap className="w-5 h-5 mb-1" />
+                 <span className="text-[8px] font-black uppercase tracking-widest">Optimized</span>
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                 <Lock className="w-5 h-5 mb-1" />
+                 <span className="text-[8px] font-black uppercase tracking-widest">Private</span>
+              </div>
+           </div>
         </div>
       </div>
-      
-      <div className="auth-bg-decoration">
-        <div className="blob blob-1"></div>
-        <div className="blob blob-2"></div>
-      </div>
-    </div>
+    </TooltipProvider>
   );
-};
-
-export default Auth;
+}
