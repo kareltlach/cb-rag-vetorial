@@ -151,7 +151,7 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen, sidebarLoading, documents, t
             <div className="loading-spinner-small"></div>
           ) : documents.length > 0 ? (
             documents.map((doc, idx) => (
-              <li key={idx} className="document-item" onClick={() => setInput(prev => `${prev} Analise o documento ${doc.name}`.trim())}>
+              <li key={idx} className="document-item" title={doc.name} onClick={() => setInput(prev => `${prev} Analise o documento ${doc.name}`.trim())}>
                 <span className="doc-icon">
                   {['png', 'jpg', 'jpeg'].includes(doc.type) ? '🖼️' : 
                    ['mp4', 'mov', 'webm'].includes(doc.type) ? '🎬' : '📄'}
