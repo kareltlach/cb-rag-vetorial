@@ -102,18 +102,29 @@ class SupabaseLite:
         try:
             current = await self.get_otp_status(email)
             async with httpx.AsyncClient() as client:
+                try: 
+                    clean_id = int(str(chat_id).strip())
+                except: 
+                    clean_id = 0
+                
                 payload = {
-                    "email": email, 
+                    "email": email.strip(), 
                     "otp_code": str(otp), 
-                    "chat_id": int(chat_id),
+                    "chat_id": clean_id,
                     "is_verified": False
                 }
                 if current:
-                    res = await client.patch(f"{self.url}/telegr_auth?email=eq.{urllib.parse.quote(email)}", headers=self.headers, json=payload)
+                    res = await client.patch(f"{self.url}/telegr_auth?email=eq.{urllib.parse.quote(email.strip())}", headers=self.headers, json=payload)
                 else:
                     res = await client.post(f"{self.url}/telegr_auth", headers=self.headers, json=payload)
-                return res.status_code in [200, 201, 204]
-        except: return False
+                
+                if res.status_code not in [200, 201, 204]:
+                    print(f"DEBUG: save_otp error ({res.status_code}): {res.text}")
+                    return False
+                return True
+        except Exception as e:
+            print(f"CRITICAL: save_otp exception: {str(e)}")
+            return False
 
     async def verify_otp(self, email, otp):
         try:
@@ -260,21 +271,29 @@ async def increment_stat(data: StatIncrement):
 async def send_otp(req: OTPSendRequest):
     import random
     otp = random.randint(100000, 999999)
-    if not sb_lite: raise HTTPException(status_code=503, detail="Supabase not connected")
+    if not sb_lite: raise HTTPException(status_code=503, detail="Supabase não conectado")
     
     success = await sb_lite.save_otp(req.email, otp, req.chat_id)
-    if not success: raise HTTPException(status_code=500, detail="Error generating security code")
+    if not success: 
+        raise HTTPException(status_code=500, detail="Erro interno ao registrar código no banco. Verifique as tabelas do Supabase.")
 
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-    if not bot_token: raise HTTPException(status_code=500, detail="Telegram Bot config missing")
+    if not bot_token: 
+        raise HTTPException(status_code=500, detail="Configuração do Telegram (Token) ausente na Vercel.")
 
     async with httpx.AsyncClient() as client:
-        message = f"🔒 *Código de Acesso - Casas Bahia RAG*\n\nSeu código de verificação é: `{otp}`\n\nEste código expira em 10 minutos."
+        message = f"🔒 *Código Operacional - Casas Bahia RAG*\n\nSeu código é: `{otp}`\n\nEste código expira em 10 minutos."
         tg_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-        tg_res = await client.post(tg_url, json={"chat_id": req.chat_id, "text": message, "parse_mode": "Markdown"})
-        if tg_res.status_code != 200: raise HTTPException(status_code=400, detail="Invalid Telegram ID")
+        try:
+            tg_res = await client.post(tg_url, json={"chat_id": str(req.chat_id).strip(), "text": message, "parse_mode": "Markdown"})
+            if tg_res.status_code != 200:
+                print(f"DEBUG: Telegram API Error: {tg_res.text}")
+                raise HTTPException(status_code=400, detail="ID de Telegram inválido ou bot não iniciado (@casasbahiarag_bot).")
+        except Exception as e:
+            print(f"CRITICAL: Telegram request exception: {str(e)}")
+            raise HTTPException(status_code=500, detail="Falha na comunicação com o gateway do Telegram.")
 
-    return {"message": "Code sent successfully!"}
+    return {"message": "Código de segurança enviado com sucesso!"}
 
 @app.get("/api/auth/otp/status/{email}")
 async def get_otp_status_route(email: str):
