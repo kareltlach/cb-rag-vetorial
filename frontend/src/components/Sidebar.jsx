@@ -15,7 +15,8 @@ import {
   Archive,
   CloudUpload,
   Plus,
-  LogOut
+  LogOut,
+  MessageSquare
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -27,7 +28,7 @@ import { toast } from 'sonner';
 
 const API_BASE = window.location.origin.includes('localhost') ? 'http://localhost:8001' : '';
 
-export default function Sidebar({ documents, trending, sidebarLoading, onDeleteClick, setInput, session, onSignOut }) {
+export default function Sidebar({ documents, trending, sidebarLoading, onDeleteClick, setInput, session, onSignOut, chats = [], activeChatId, onSelectChat, onNewChat, onDeleteChat }) {
   const [isUploading, setIsUploading] = useState(false);
 
   const getDocIcon = (type) => {
@@ -90,31 +91,75 @@ export default function Sidebar({ documents, trending, sidebarLoading, onDeleteC
             </div>
           </div>
 
-          <div className="flex items-center justify-between mb-2">
-            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] font-black px-3 py-1 rounded-full animate-in fade-in slide-in-from-left duration-700">
-              CLUSTER ONLINE
-            </Badge>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <label className="cursor-pointer">
-                  <div className={cn(
-                    "w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-500 border border-white/5",
-                    isUploading ? "bg-primary/20 text-primary animate-spin" : "bg-white/5 text-foreground/40 hover:bg-primary/20 hover:text-primary hover:border-primary/20"
-                  )}>
-                    {isUploading ? <Zap className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
-                  </div>
-                  <input
-                    type="file"
-                    className="hidden"
-                    onChange={handleFileUpload}
-                    disabled={isUploading}
-                    aria-label="Upload de novo documento"
-                  />
-                </label>
-              </TooltipTrigger>
-              <TooltipContent side="right">Clique para processar novos arquivos</TooltipContent>
-            </Tooltip>
+          <div className="flex items-center gap-3">
+             <Button 
+               variant="default" 
+               className="flex-1 bg-primary hover:bg-primary/80 text-white rounded-xl font-black text-[10px] uppercase tracking-widest h-10 shadow-lg shadow-primary/20"
+               onClick={onNewChat}
+             >
+               <Plus className="w-3.5 h-3.5 mr-2" /> Nova Conversa
+             </Button>
+             
+             <Tooltip>
+               <TooltipTrigger asChild>
+                 <label className="cursor-pointer">
+                   <div className={cn(
+                     "w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-500 border border-white/5 bg-white/5 text-foreground/40 hover:bg-primary/20 hover:text-primary hover:border-primary/20",
+                     isUploading && "animate-spin"
+                   )}>
+                     <CloudUpload className="w-5 h-5" />
+                   </div>
+                   <input
+                     type="file"
+                     className="hidden"
+                     onChange={handleFileUpload}
+                     disabled={isUploading}
+                   />
+                 </label>
+               </TooltipTrigger>
+               <TooltipContent side="right">Upload de Documentos</TooltipContent>
+             </Tooltip>
           </div>
+        </div>
+
+        {/* Conversations Section */}
+        <div className="px-8 mt-2">
+          <div className="flex items-center justify-between px-1 mb-4">
+            <p className="text-subtitle">Conversas Recentes</p>
+            <History className="w-3 h-3 text-primary/40" />
+          </div>
+          
+          <ScrollArea className="h-[200px] mb-6">
+            <div className="space-y-2">
+              {chats.length === 0 ? (
+                <p className="text-[10px] text-foreground/20 font-bold uppercase text-center py-4 tracking-widest">Sem Histórico</p>
+              ) : (
+                chats.map((chat) => (
+                  <div 
+                    key={chat.id}
+                    onClick={() => onSelectChat(chat.id)}
+                    className={cn(
+                      "group flex items-center justify-between p-3 rounded-2xl cursor-pointer transition-all duration-300 border",
+                      activeChatId === chat.id 
+                        ? "bg-primary/10 border-primary/20 text-white" 
+                        : "bg-white/[0.02] border-transparent hover:border-white/5 text-foreground/40 hover:text-white"
+                    )}
+                  >
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <MessageSquare className={cn("w-3.5 h-3.5 shrink-0", activeChatId === chat.id ? "text-primary" : "opacity-40")} />
+                      <span className="text-[11px] font-bold truncate uppercase tracking-tight">{chat.title}</span>
+                    </div>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); onDeleteChat(chat.id); }}
+                      className="opacity-0 group-hover:opacity-100 p-1 hover:text-rose-500 transition-all ml-2"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </ScrollArea>
         </div>
 
         <div className="px-8 mt-6">

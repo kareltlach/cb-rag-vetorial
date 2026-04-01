@@ -258,7 +258,9 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
   const [input, setInput] = useState('')
+  const [activeChatId, setActiveChatId] = useState(null)
   const [messages, setMessages] = useState([])
+  const [chats, setChats] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [selectedResult, setSelectedResult] = useState(null)
@@ -295,14 +297,24 @@ function App() {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) checkVerification(session.user.email);
+      if (session) {
+        checkVerification(session.user.email);
+        loadChats(session.user.email);
+      }
       setAuthLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) checkVerification(session.user.email);
-      else setIsVerified(false);
+      if (session) {
+        checkVerification(session.user.email);
+        loadChats(session.user.email);
+      } else {
+        setIsVerified(false);
+        setChats([]);
+        setActiveChatId(null);
+        setMessages([]);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -421,6 +433,85 @@ function App() {
       setIsUploading(false)
     }
   }
+
+  const loadChats = async (email) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/chats/${email}`)
+      if (res.ok) {
+        const data = await res.json()
+        setChats(data)
+      }
+    } catch (e) {
+      console.error("Erro ao carregar chats:", e)
+    }
+  }
+
+  const handleNewChat = async () => {
+    if (!session) return
+    setIsLoading(true)
+    try {
+      const resp = await fetch(`${API_BASE}/api/chats`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: session.user.email, title: "Nova Conversa" })
+      })
+      if (resp.ok) {
+        const newChat = await resp.json()
+        setChats(prev => [newChat, ...prev])
+        setActiveChatId(newChat.id)
+        setMessages([])
+        toast.success("Nova conversa iniciada.")
+      }
+    } catch (e) {
+      console.error("Critical error in handleNewChat:", e)
+      toast.error("Não foi possível persistir a nova conversa no banco. Verifique se a tabela 'chats' foi criada no Supabase.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleSelectChat = (id) => {
+    const selected = chats.find(c => c.id === id)
+    if (selected) {
+      setActiveChatId(id)
+      setMessages(selected.messages || [])
+    }
+  }
+
+  const handleDeleteChat = async (id) => {
+    try {
+      const resp = await fetch(`${API_BASE}/api/chats/${id}`, { method: 'DELETE' })
+      if (resp.ok) {
+        setChats(prev => prev.filter(c => c.id !== id))
+        if (activeChatId === id) {
+          setActiveChatId(null)
+          setMessages([])
+        }
+        toast.info("Conversa removida.")
+      }
+    } catch (e) {
+      toast.error("Erro ao remover conversa.")
+    }
+  }
+
+  // Auto-save messages to Supabase
+  useEffect(() => {
+    if (!activeChatId || messages.length === 0) return
+    
+    const timer = setTimeout(async () => {
+      try {
+        await fetch(`${API_BASE}/api/chats/${activeChatId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages })
+        })
+      } catch (e) {
+        console.error("Auto-save failed:", e)
+      }
+    }, 2000)
+
+    return () => clearTimeout(timer)
+  }, [messages, activeChatId])
 
   const renderHighlightedText = (text, query) => {
     if (!query || !text) return text;
@@ -602,6 +693,11 @@ function App() {
             sidebarLoading={sidebarLoading} 
             documents={documents} 
             trending={trending} 
+            chats={chats}
+            activeChatId={activeChatId}
+            onSelectChat={handleSelectChat}
+            onNewChat={handleNewChat}
+            onDeleteChat={handleDeleteChat}
             setInput={setInput} 
             onFileUpload={handleFileUpload}
             isUploading={isUploading}

@@ -89,21 +89,62 @@ class SupabaseLite:
         try:
             current = await self.get_otp_status(email)
             async with httpx.AsyncClient() as client:
+                try: cid = int(chat_id)
+                except: cid = 0
                 payload = {
-                    "email": email,
-                    "otp_code": str(otp),
-                    "chat_id": int(chat_id),
+                    "email": email, 
+                    "otp_code": str(otp), 
+                    "chat_id": cid,
                     "is_verified": False
                 }
                 if current:
-                    res = await client.patch(f"{self.url}/telegr_auth?email=eq.{urllib.parse.quote(email)}", headers=self.headers, json={"otp_code": str(otp), "chat_id": int(chat_id), "is_verified": False})
-                    return not res.is_error
+                    res = await client.patch(f"{self.url}/telegr_auth?email=eq.{urllib.parse.quote(email)}", headers=self.headers, json=payload)
                 else:
                     res = await client.post(f"{self.url}/telegr_auth", headers=self.headers, json=payload)
-                    return not res.is_error
+                return res.status_code in [200, 201, 204]
         except Exception as e:
-            print(f"Erro Supabase SAVE OTP: {e}")
+            print(f"Erro save_otp: {e}")
             return False
+
+    # Multi-Chat Operations
+    async def db_list_chats(self, email):
+        import urllib.parse
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await client.get(f"{self.url}/chats?email=eq.{urllib.parse.quote(email)}&order=updated_at.desc", headers=self.headers)
+                return res.json() if res.status_code == 200 else []
+        except: return []
+
+    async def db_create_chat(self, email, title="Nova Conversa"):
+        try:
+            async with httpx.AsyncClient() as client:
+                headers = {**self.headers, "Prefer": "return=representation"}
+                payload = {"email": email, "title": title, "messages": []}
+                res = await client.post(f"{self.url}/chats", headers=headers, json=payload)
+                if res.status_code != 201 and res.status_code != 200:
+                    print(f"Erro SQL local ao criar chat: {res.text}")
+                    return None
+                data = res.json()
+                return data[0] if isinstance(data, list) and data else data
+        except Exception as e: 
+            print(f"Erro Exception local ao criar chat: {e}")
+            return None
+
+    async def db_update_chat(self, chat_id, messages, title=None):
+        try:
+            async with httpx.AsyncClient() as client:
+                payload = {"messages": messages}
+                if title: payload["title"] = title
+                res = await client.patch(f"{self.url}/chats?id=eq.{chat_id}", headers=self.headers, json=payload)
+                return res.status_code in [200, 204]
+        except: return False
+
+    async def db_delete_chat(self, chat_id):
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await client.delete(f"{self.url}/chats?id=eq.{chat_id}", headers=self.headers)
+                return res.status_code in [200, 204]
+        except: return False
 
     async def verify_otp(self, email, otp):
         try:
@@ -507,6 +548,14 @@ class OTPVerifyRequest(BaseModel):
     email: str
     otp_code: str
 
+class ChatCreateRequest(BaseModel):
+    email: str
+    title: str
+
+class ChatUpdateRequest(BaseModel):
+    messages: list
+    title: Optional[str] = None
+
 @app.get("/api/documents")
 async def list_documents():
     """Lista todos os documentos disponíveis indexados no Supabase"""
@@ -712,11 +761,6 @@ async def get_prompt_stats(prompt_id: str):
             
     return {"views": 0, "copies": 0, "shares": 0}
 
-class StatIncrement(BaseModel):
-    prompt_id: str
-    text: str
-    type: str  # 'views', 'copies', 'shares'
-
 @app.post("/api/stats/increment")
 async def increment_stat(data: StatIncrement):
     if not sb_lite:
@@ -736,34 +780,27 @@ async def increment_stat(data: StatIncrement):
 async def send_otp(req: OTPSendRequest):
     import random
     otp = random.randint(100000, 999999)
+    if not sb_lite: raise HTTPException(status_code=503, detail="Supabase not connected")
     
-    # 1. Salvar no Supabase
     success = await sb_lite.save_otp(req.email, otp, req.chat_id)
-    if not success:
-        raise HTTPException(status_code=500, detail="Erro ao gerar código de segurança.")
+    if not success: raise HTTPException(status_code=500, detail="Falha ao registrar código de segurança. Verifique a tabela 'telegr_auth'.")
 
-    # 2. Enviar via Telegram
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-    if not bot_token:
-        raise HTTPException(status_code=500, detail="Configuração do Bot Telegram ausente.")
+    if not bot_token: raise HTTPException(status_code=500, detail="Telegram Bot token não configurado no .env")
 
     async with httpx.AsyncClient() as client:
-        message = f"🔒 *Código de Acesso - Casas Bahia RAG*\n\nSeu código de verificação é: `{otp}`\n\nEste código expira em 10 minutos."
+        message = f"🔒 *Código de Proteção - Casas Bahia RAG*\n\nSeu código operacional é: `{otp}`\n\nEste código é válido por 10 minutos."
         tg_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-        tg_res = await client.post(tg_url, json={
-            "chat_id": req.chat_id,
-            "text": message,
-            "parse_mode": "Markdown"
-        })
-        
-        if tg_res.status_code != 200:
+        tg_res = await client.post(tg_url, json={"chat_id": req.chat_id, "text": message, "parse_mode": "Markdown"})
+        if tg_res.status_code != 200: 
             print(f"Erro Telegram: {tg_res.text}")
             raise HTTPException(status_code=400, detail="ID de Telegram inválido ou bot não iniciado.")
 
-    return {"message": "Código enviado com sucesso!"}
+    return {"message": "Código de segurança enviado via Telegram."}
 
 @app.get("/api/auth/otp/status/{email}")
 async def get_otp_status(email: str):
+    if not sb_lite: return {"is_verified": False}
     status = await sb_lite.get_otp_status(email)
     return {"is_verified": status.get("is_verified", False) if status else False}
 

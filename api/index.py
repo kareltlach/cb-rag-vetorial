@@ -126,6 +126,48 @@ class SupabaseLite:
                 return False
         except: return False
 
+    # Multi-Chat Operations
+    async def db_list_chats(self, email):
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await client.get(f"{self.url}/chats?email=eq.{urllib.parse.quote(email)}&order=updated_at.desc", headers=self.headers)
+                return res.json() if res.status_code == 200 else []
+        except: return []
+
+    async def db_create_chat(self, email, title="Nova Conversa"):
+        try:
+            async with httpx.AsyncClient() as client:
+                headers = {**self.headers, "Prefer": "return=representation"}
+                payload = {"email": email, "title": title, "messages": []}
+                res = await client.post(f"{self.url}/chats", headers=headers, json=payload)
+                if res.status_code != 201 and res.status_code != 200:
+                    print(f"Erro SQL ao criar chat: {res.text}")
+                    return None
+                data = res.json()
+                return data[0] if isinstance(data, list) and data else data
+        except Exception as e: 
+            print(f"Erro Exception ao criar chat: {e}")
+            return None
+
+    async def db_update_chat(self, chat_id, messages, title=None):
+        try:
+            async with httpx.AsyncClient() as client:
+                payload = {"messages": messages, "updated_at": "now()"}
+                if title: payload["title"] = title
+                res = await client.patch(f"{self.url}/chats?id=eq.{chat_id}", headers=self.headers, json=payload)
+                return res.status_code in [200, 204]
+        except: return False
+
+    async def db_delete_chat(self, chat_id):
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await client.delete(f"{self.url}/chats?id=id.eq.{chat_id}", headers=self.headers) 
+                # Note: Corrected eq placement for Supabase ID
+                if res.status_code != 204:
+                    res = await client.delete(f"{self.url}/chats?id=eq.{chat_id}", headers=self.headers)
+                return res.status_code in [200, 204]
+        except: return False
+
 # Instância Supabase
 sb_lite = SupabaseLite(SUPABASE_URL, SUPABASE_ANON_KEY) if SUPABASE_URL and SUPABASE_ANON_KEY else None
 
@@ -179,6 +221,14 @@ class OTPSendRequest(BaseModel):
 class OTPVerifyRequest(BaseModel):
     email: str
     otp_code: str
+
+class ChatCreateRequest(BaseModel):
+    email: str
+    title: Optional[str] = "Nova Conversa"
+
+class ChatUpdateRequest(BaseModel):
+    messages: List[dict]
+    title: Optional[str] = None
 
 # Routes
 @app.get("/api")
@@ -238,6 +288,33 @@ async def verify_otp_route(req: OTPVerifyRequest):
     success = await sb_lite.verify_otp(req.email, req.otp_code)
     if not success: raise HTTPException(status_code=401, detail="Invalid or expired code")
     return {"verified": True}
+
+# Multi-Chat Routes
+@app.get("/api/chats/{email}")
+async def list_chats(email: str):
+    if not sb_lite: return []
+    return await sb_lite.db_list_chats(email)
+
+@app.post("/api/chats")
+async def create_chat(req: ChatCreateRequest):
+    if not sb_lite: raise HTTPException(status_code=503, detail="Supabase not connected")
+    chat = await sb_lite.db_create_chat(req.email, req.title)
+    if not chat: raise HTTPException(status_code=500, detail="Error creating chat")
+    return chat
+
+@app.patch("/api/chats/{chat_id}")
+async def update_chat(chat_id: str, req: ChatUpdateRequest):
+    if not sb_lite: raise HTTPException(status_code=503, detail="Supabase not connected")
+    success = await sb_lite.db_update_chat(chat_id, req.messages, req.title)
+    if not success: raise HTTPException(status_code=500, detail="Error updating chat")
+    return {"success": True}
+
+@app.delete("/api/chats/{chat_id}")
+async def delete_chat(chat_id: str):
+    if not sb_lite: raise HTTPException(status_code=503, detail="Supabase not connected")
+    success = await sb_lite.db_delete_chat(chat_id)
+    if not success: raise HTTPException(status_code=500, detail="Error deleting chat")
+    return {"success": True}
 
 # Indexing and Search (Lazy)
 @app.post("/api/search")
