@@ -102,6 +102,77 @@ const PromptCodeBlock = ({ inner, blockKey, isWordWrap, setIsWordWrap, copyToCli
   )
 }
 
+// ── Sidebar Component (Moved outside App for better stability) ───────────────
+const Sidebar = ({ isSidebarOpen, setIsSidebarOpen, sidebarLoading, documents, trending, setInput }) => (
+  <>
+    {isSidebarOpen && <div className="mobile-overlay" onClick={() => setIsSidebarOpen(false)} />}
+    <aside className={`sidebar ${!isSidebarOpen ? 'collapsed' : ''}`}>
+      <div className="sidebar-header">
+        <div className="logo-container">
+          <div className="logo-sparkle">✨</div>
+          <h2 className="sidebar-title">Analisando Agora</h2>
+        </div>
+        <button className="sidebar-close-mobile" onClick={() => setIsSidebarOpen(false)}>×</button>
+      </div>
+      
+      <div className="sidebar-section">
+        <h2 className="section-label">📂 Documentos em /data</h2>
+        <ul className="document-list">
+          {sidebarLoading ? (
+            <div className="loading-spinner-small"></div>
+          ) : documents.length > 0 ? (
+            documents.map((doc, idx) => (
+              <li key={idx} className="document-item">
+                <span className="doc-icon">
+                  {['png', 'jpg', 'jpeg'].includes(doc.type) ? '🖼️' : 
+                   ['mp4', 'mov', 'webm'].includes(doc.type) ? '🎬' : '📄'}
+                </span>
+                <div className="doc-info">
+                  <div className="doc-name">{doc.name}</div>
+                  <div className="doc-meta">{doc.type}</div>
+                </div>
+              </li>
+            ))
+          ) : (
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', padding: '1rem' }}>
+              Nenhum documento encontrado em /data.
+            </p>
+          )}
+        </ul>
+      </div>
+
+      {trending.length > 0 && (
+        <div className="sidebar-section trending-section">
+          <h2 className="section-label">🔥 Mais Utilizados</h2>
+          <ul className="trending-list">
+            {trending.map((item, idx) => (
+              <li 
+                key={idx} 
+                className="trending-item" 
+                onClick={() => {
+                  setInput(beautifyPromptId(item.prompt_id))
+                }}
+              >
+                <div className="trending-info">
+                  <span className="trending-name">{beautifyPromptId(item.prompt_id)}</span>
+                  <div className="trending-stats">
+                    <span>👁️ {item.views}</span>
+                    <span>📋 {item.copies}</span>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="sidebar-footer">
+        <p className="version-text">v2.0 Premium AI</p>
+      </div>
+    </aside>
+  </>
+)
+
 function App() {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState([
@@ -252,80 +323,7 @@ function App() {
       return p
     })
   }
-}
 
-// ── Sidebar Component (Moved outside App for better stability) ───────────────
-const Sidebar = ({ isSidebarOpen, setIsSidebarOpen, sidebarLoading, documents, trending, setInput }) => (
-  <>
-    {isSidebarOpen && <div className="mobile-overlay" onClick={() => setIsSidebarOpen(false)} />}
-    <aside className={`sidebar ${!isSidebarOpen ? 'collapsed' : ''}`}>
-      <div className="sidebar-header">
-        <div className="logo-container">
-          <div className="logo-sparkle">✨</div>
-          <h2 className="sidebar-title">Analisando Agora</h2>
-        </div>
-        <button className="sidebar-close-mobile" onClick={() => setIsSidebarOpen(false)}>×</button>
-      </div>
-      
-      <div className="sidebar-section">
-        <h2 className="section-label">📂 Documentos em /data</h2>
-        <ul className="document-list">
-          {sidebarLoading ? (
-            <div className="loading-spinner-small"></div>
-          ) : documents.length > 0 ? (
-            documents.map((doc, idx) => (
-              <li key={idx} className="document-item">
-                <span className="doc-icon">
-                  {['png', 'jpg', 'jpeg'].includes(doc.type) ? '🖼️' : 
-                   ['mp4', 'mov', 'webm'].includes(doc.type) ? '🎬' : '📄'}
-                </span>
-                <div className="doc-info">
-                  <div className="doc-name">{doc.name}</div>
-                  <div className="doc-meta">{doc.type}</div>
-                </div>
-              </li>
-            ))
-          ) : (
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', padding: '1rem' }}>
-              Nenhum documento encontrado em /data.
-            </p>
-          )}
-        </ul>
-      </div>
-
-      {trending.length > 0 && (
-        <div className="sidebar-section trending-section">
-          <h2 className="section-label">🔥 Mais Utilizados</h2>
-          <ul className="trending-list">
-            {trending.map((item, idx) => (
-              <li 
-                key={idx} 
-                className="trending-item" 
-                onClick={() => {
-                  setInput(beautifyPromptId(item.prompt_id))
-                }}
-              >
-                <div className="trending-info">
-                  <span className="trending-name">{beautifyPromptId(item.prompt_id)}</span>
-                  <div className="trending-stats">
-                    <span>👁️ {item.views}</span>
-                    <span>📋 {item.copies}</span>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <div className="sidebar-footer">
-        <p className="version-text">v2.0 Premium AI</p>
-      </div>
-    </aside>
-  </>
-)
-
-function App() {
   useEffect(() => {
     localStorage.setItem('rag-settings', JSON.stringify(settings))
   }, [settings])
