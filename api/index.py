@@ -106,31 +106,36 @@ class SupabaseLite:
         except: return None
 
     async def save_otp(self, email, otp, chat_id):
+        """
+        Atomic UPSERT operation for OTP storage.
+        Uses PostgREST 'on_conflict' to handle existing email records reliably.
+        """
         try:
-            current = await self.get_otp_status(email)
             async with httpx.AsyncClient() as client:
+                email_clean = email.strip()
                 try: 
                     clean_id = int(str(chat_id).strip())
                 except: 
                     clean_id = 0
                 
                 payload = {
-                    "email": email.strip(), 
+                    "email": email_clean, 
                     "otp_code": str(otp), 
                     "chat_id": clean_id,
-                    "is_verified": False
+                    "is_verified": False,
+                    "expires_at": "now() + interval '10 minutes'"
                 }
-                if current:
-                    res = await client.patch(f"{self.url}/telegr_auth?email=eq.{urllib.parse.quote(email.strip())}", headers=self.headers, json=payload)
-                else:
-                    res = await client.post(f"{self.url}/telegr_auth", headers=self.headers, json=payload)
+                
+                # Using POST with on_conflict parameter for atomic UPSERT
+                url = f"{self.url}/telegr_auth?on_conflict=email"
+                res = await client.post(url, headers=self.headers, json=payload)
                 
                 if res.status_code not in [200, 201, 204]:
-                    print(f"DEBUG: save_otp error ({res.status_code}): {res.text}")
+                    print(f"CRITICAL: Supabase SQL Error ({res.status_code}): {res.text}")
                     return False
                 return True
         except Exception as e:
-            print(f"CRITICAL: save_otp exception: {str(e)}")
+            print(f"CRITICAL: System Exception in save_otp: {str(e)}")
             return False
 
     async def verify_otp(self, email, otp):
@@ -173,18 +178,22 @@ class SupabaseLite:
                 payload = {"messages": messages, "updated_at": "now()"}
                 if title: payload["title"] = title
                 res = await client.patch(f"{self.url}/chats?id=eq.{chat_id}", headers=self.headers, json=payload)
-                return res.status_code in [200, 204]
-        except: return False
+                if res.status_code not in [200, 204]:
+                    print(f"Erro SQL ao atualizar chat: {res.text}")
+                    return False
+                return True
+        except Exception as e:
+            print(f"Erro Exception ao atualizar chat: {e}")
+            return False
 
     async def db_delete_chat(self, chat_id):
         try:
             async with httpx.AsyncClient() as client:
-                res = await client.delete(f"{self.url}/chats?id=id.eq.{chat_id}", headers=self.headers) 
-                # Note: Corrected eq placement for Supabase ID
-                if res.status_code != 204:
-                    res = await client.delete(f"{self.url}/chats?id=eq.{chat_id}", headers=self.headers)
+                res = await client.delete(f"{self.url}/chats?id=eq.{chat_id}", headers=self.headers)
                 return res.status_code in [200, 204]
-        except: return False
+        except Exception as e:
+            print(f"Erro Exception ao deletar chat: {e}")
+            return False
 
 # Instância Supabase
 if not SUPABASE_URL or not SUPABASE_ANON_KEY:
@@ -291,21 +300,28 @@ async def increment_stat(data: StatIncrement):
 async def send_otp(req: OTPSendRequest):
     import random
     otp = random.randint(100000, 999999)
-    if not sb_lite: raise HTTPException(status_code=503, detail="Supabase não configurado na Vercel.")
+    if not sb_lite: 
+        raise HTTPException(status_code=503, detail="Supabase não configurado localmente.")
     
     success = await sb_lite.save_otp(req.email, otp, req.chat_id)
     if not success: 
-        raise HTTPException(status_code=500, detail="Erro ao registrar código operacional no banco.")
+        raise HTTPException(status_code=500, detail="Erro ao registrar código no banco de dados.")
 
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not bot_token: 
-        raise HTTPException(status_code=503, detail="Variável TELEGRAM_BOT_TOKEN não encontrada na Vercel.")
+        raise HTTPException(status_code=503, detail="Token do Telegram ausente no ambiente.")
 
     async with httpx.AsyncClient() as client:
         message = f"🔒 *Código de Acesso - Casas Bahia RAG*\n\nSeu código é: `{otp}`\n\nEste código expira em 10 minutos."
         tg_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-        tg_res = await client.post(tg_url, json={"chat_id": str(req.chat_id).strip(), "text": message, "parse_mode": "Markdown"})
-        if tg_res.status_code != 200: raise HTTPException(status_code=400, detail="Telegram ID inválido ou bot não iniciado.")
+        try:
+            tg_res = await client.post(tg_url, json={"chat_id": str(req.chat_id).strip(), "text": message, "parse_mode": "Markdown"})
+            if tg_res.status_code != 200: 
+                err_data = tg_res.json()
+                raise HTTPException(status_code=400, detail=f"Telegram Error: {err_data.get('description', 'Status ' + str(tg_res.status_code))}")
+        except Exception as e:
+            if isinstance(e, HTTPException): raise e
+            raise HTTPException(status_code=502, detail=f"Falha na comunicação com Telegram: {str(e)}")
 
     return {"message": "Código enviado com sucesso!"}
 

@@ -630,37 +630,94 @@ function App() {
   }, [messages, isLoading])
 
   const handleSearch = async () => {
-    if (!input.trim()) return
-    const userMessage = { role: 'user', content: input }
+    if (!input.trim() || !session) return
+    
+    let currentChatId = activeChatId
+    const isFirstMessage = messages.length === 0
+    const query = input.trim()
+    
+    // 1. Criar chat automaticamente se não houver um ativo
+    if (!currentChatId) {
+      setIsLoading(true)
+      try {
+        const resp = await fetch(`${API_BASE}/api/chats`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: session.user.email, title: "Nova Conversa" })
+        })
+        if (resp.ok) {
+          const newChat = await resp.json()
+          setChats(prev => [newChat, ...prev])
+          setActiveChatId(newChat.id)
+          currentChatId = newChat.id
+        }
+      } catch (e) {
+        console.error("Erro ao criar chat automático:", e)
+      }
+    }
+
+    const userMessage = { role: 'user', content: query }
     setMessages(prev => [...prev, userMessage])
-    setLastQuery(input)
+    setLastQuery(query)
     setInput('')
     setIsLoading(true)
+    
     try {
       const response = await fetch(`${API_BASE}/api/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          query: input, 
+          query: query, 
           top_k: 5,
           model: settings.model,
           gemini_api_key: settings.apiKey || null
         })
       })
+      
       if (!response.ok) {
         const errData = await response.json().catch(() => ({ detail: `Erro ${response.status}: Comunicação Síncrona Interrompida.` }));
         throw new Error(errData.detail || 'Falha na resposta do servidor.');
       }
+      
       const data = await response.json()
-      setMessages(prev => [...prev, { role: 'ai', content: data.answer, results: data.sources }])
+      const aiMessage = { role: 'ai', content: data.answer, results: data.sources }
+      const updatedMessages = [...messages, userMessage, aiMessage]
+      
+      setMessages(prev => [...prev, aiMessage])
+
+      // 2. Atualizar título do chat se for a primeira mensagem (Smart Naming)
+      if (isFirstMessage && currentChatId) {
+        const title = query.length > 30 ? query.substring(0, 30) + "..." : query
+        fetch(`${API_BASE}/api/chats/${currentChatId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: updatedMessages, title: title })
+        }).then(() => {
+          setChats(prev => prev.map(c => c.id === currentChatId ? { ...c, title, messages: updatedMessages } : c))
+        })
+      }
     } catch (error) {
       toast.error("Falha no Agente: " + error.message);
-    } finally { setIsLoading(false) }
+    } finally { 
+      setIsLoading(false) 
+    }
   }
 
-  const handleClearChat = () => {
+  const handleClearChat = async () => {
     setMessages([])
-    toast.info("Memória do terminal limpa.")
+    if (activeChatId) {
+      try {
+        await fetch(`${API_BASE}/api/chats/${activeChatId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: [] })
+        })
+        setChats(prev => prev.map(c => c.id === activeChatId ? { ...c, messages: [] } : c))
+      } catch (e) {
+        console.error("Erro ao limpar messages no Supabase:", e)
+      }
+    }
+    toast.info("Memória do terminal limpa no cluster.")
   }
 
   const handleSignOut = async () => {

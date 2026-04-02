@@ -102,10 +102,11 @@ export default function Auth({ initialEmail = '' }) {
         setStep('verify');
         toast.info("Código de segurança enviado via Telegram.");
       } else {
-        toast.error("Cluster MFA indisponível temporariamente.");
+        const errorData = await otpRes.json().catch(() => ({ detail: "Cluster MFA indisponível." }));
+        toast.error(`Falha no MFA: ${errorData.detail}`);
       }
     } catch (error) {
-      toast.error("Erro ao enviar código de segurança.");
+      toast.error("Erro de Rede: Não foi possível alcançar o servidor de segurança.");
     } finally {
       setLoading(false);
     }
