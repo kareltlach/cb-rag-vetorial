@@ -362,10 +362,21 @@ async def search(search_query: SearchQuery):
         raise HTTPException(status_code=503, detail="Pinecone Engine não inicializado. Chave ausente.")
 
     try:
-        # Embedding
+        # Embedding com Fallback Dinâmico
         formatted_query = f"task: search result | query: {search_query.query}"
-        # Usamos text-embedding-004 que é mais estável
-        embed_response = client.models.embed_content(model="text-embedding-004", contents=formatted_query)
+        embed_response = None
+        
+        # Tentamos o modelo mais novo, com fallback para o estável se der 404
+        for model_name_emb in ["text-embedding-004", "embedding-001"]:
+            try:
+                embed_response = client.models.embed_content(model=model_name_emb, contents=formatted_query)
+                break
+            except Exception as e_emb:
+                if "404" in str(e_emb) and model_name_emb != "embedding-001":
+                    print(f"--- INFO: Modelo {model_name_emb} indisponível, tentando fallback...")
+                    continue
+                raise e_emb
+
         query_vector = embed_response.embeddings[0].values
 
         # Retrieval
@@ -393,7 +404,9 @@ async def search(search_query: SearchQuery):
         
         return {"answer": gen_response.text, "sources": matches}
     except Exception as e:
-        import traceback
-        full_error = f"{str(e)}\n{traceback.format_exc()}"
-        print(f"--- CRITICAL ERROR: {full_error}")
-        raise HTTPException(status_code=500, detail=full_error)
+        traceback.print_exc()
+        error_msg = str(e)
+        if "404" in error_msg: error_msg = "Modelo ou Recurso não encontrado na API Gemini."
+        if "429" in error_msg: error_msg = "Quota excedida no Google Gemini."
+        if "invalid" in error_msg.lower(): error_msg = "Parâmetros inválidos na requisição RAG."
+        raise HTTPException(status_code=500, detail=error_msg)
