@@ -100,7 +100,10 @@ class SupabaseLite:
     async def get_otp_status(self, email):
         try:
             async with httpx.AsyncClient() as client:
-                res = await client.get(f"{self.url}/telegr_auth?email=eq.{urllib.parse.quote(email)}", headers=self.headers)
+                # Supabase REST endpoint fix for direct HTTP calls
+                rest_url = f"{self.url.replace('/rest/v1', '')}/rest/v1/telegr_auth"
+                params = {"email": f"eq.{email.strip()}"}
+                res = await client.get(rest_url, headers=self.headers, params=params)
                 data = res.json()
                 return data[0] if res.status_code == 200 and data else None
         except: return None
@@ -127,7 +130,8 @@ class SupabaseLite:
                 }
                 
                 # Using POST with on_conflict parameter for atomic UPSERT
-                url = f"{self.url}/telegr_auth?on_conflict=email"
+                # Ensure we point to REST API v1
+                url = f"{self.url.replace('/rest/v1', '')}/rest/v1/telegr_auth?on_conflict=email"
                 res = await client.post(url, headers=self.headers, json=payload)
                 
                 if res.status_code not in [200, 201, 204]:
@@ -141,7 +145,10 @@ class SupabaseLite:
     async def verify_otp(self, email, otp):
         try:
             async with httpx.AsyncClient() as client:
-                res = await client.get(f"{self.url}/telegr_auth?email=eq.{urllib.parse.quote(email)}&otp_code=eq.{otp}", headers=self.headers)
+                email_clean = email.strip()
+                rest_url = f"{self.url.replace('/rest/v1', '')}/rest/v1/telegr_auth"
+                params = {"email": f"eq.{email_clean}", "otp_code": f"eq.{otp}"}
+                res = await client.get(rest_url, headers=self.headers, params=params)
                 data = res.json()
                 if data:
                     await client.patch(f"{self.url}/telegr_auth?email=eq.{urllib.parse.quote(email)}", headers=self.headers, json={"is_verified": True})
@@ -408,17 +415,30 @@ async def search(search_query: SearchQuery):
         # Generation
         prompt = f"Use o contexto abaixo para responder: {context_text}"
         
-        # Fallback de modelo para gemini-1.5-flash caso o enviado não exista
-        model_name = search_query.model if search_query.model and "flash" in search_query.model.lower() else "gemini-1.5-flash"
-        # Mantemos o nome original se for um modelo 3.1 real, senão usamos o fallback
-        if "3" in model_name and "3.1" not in model_name:
-            model_name = "gemini-1.5-flash"
+        # Generation com Fallback Dinâmico de Modelo
+        # A ordem de prioridade tenta o modelo solicitado, depois flash 2.5 moderno, depois flash 2.5 estável
+        model_candidates = [search_query.model, "gemini-3.1-flash-lite-preview", "gemini-2.5-flash", "models/gemini-2.5-flash"]
+        gen_response = None
+        last_gen_err = None
 
-        gen_response = client.models.generate_content(
-            model=model_name,
-            contents=search_query.query,
-            config=types.GenerateContentConfig(system_instruction=prompt, temperature=0.3)
-        )
+        for model_name in model_candidates:
+            if not model_name: continue
+            try:
+                gen_response = client.models.generate_content(
+                    model=model_name,
+                    contents=search_query.query,
+                    config=types.GenerateContentConfig(system_instruction=prompt, temperature=0.3)
+                )
+                if gen_response and gen_response.text:
+                    print(f"--- SUCCESS: Generation completed using model: {model_name}")
+                    break
+            except Exception as e_gen:
+                last_gen_err = str(e_gen)
+                print(f"--- INFO: Model {model_name} failed. Attempting next candidate. Error: {last_gen_err}")
+                continue
+        
+        if not gen_response:
+            raise Exception(f"Todos os modelos Gemini falharam. Último erro: {last_gen_err}")
         
         return {"answer": gen_response.text, "sources": matches}
     except Exception as e:

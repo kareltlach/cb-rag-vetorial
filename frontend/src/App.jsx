@@ -271,7 +271,7 @@ function App() {
     const saved = localStorage.getItem('rag-settings')
     return saved ? JSON.parse(saved) : {
       apiKey: '',
-      model: 'gemini-3.1-flash-lite-preview'
+      model: 'gemini-2.5-flash'
     }
   })
   const [lastQuery, setLastQuery] = useState('')
@@ -401,8 +401,10 @@ function App() {
       if (resp.ok) {
         toast.success(`Base de dados "${docToDelete}" expurgada com sucesso.`);
         fetchDocuments();
-      } else {
-        throw new Error('Falha catastrófica ao remover conteúdo');
+      }
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({ detail: "Falha ao remover conteúdo" }))
+        throw new Error(errData.detail || "Falha no servidor")
       }
     } catch (err) {
       toast.error("Erro na operação: " + err.message);
@@ -676,7 +678,8 @@ function App() {
       
       if (!response.ok) {
         const errData = await response.json().catch(() => ({ detail: `Erro ${response.status}: Comunicação Síncrona Interrompida.` }));
-        throw new Error(errData.detail || 'Falha na resposta do servidor.');
+        const errorMessage = errData.detail || errData.message || 'Falha na resposta do servidor.';
+        throw new Error(errorMessage);
       }
       
       const data = await response.json()
