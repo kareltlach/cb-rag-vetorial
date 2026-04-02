@@ -271,7 +271,7 @@ function App() {
     const saved = localStorage.getItem('rag-settings')
     return saved ? JSON.parse(saved) : {
       apiKey: '',
-      model: 'gemini-1.5-flash'
+      model: 'gemini-3.1-flash-lite-preview'
     }
   })
   const [lastQuery, setLastQuery] = useState('')

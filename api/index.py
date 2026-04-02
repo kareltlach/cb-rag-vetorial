@@ -394,7 +394,9 @@ async def search(search_query: SearchQuery):
         
         # Fallback de modelo para gemini-1.5-flash caso o enviado não exista
         model_name = search_query.model if search_query.model and "flash" in search_query.model.lower() else "gemini-1.5-flash"
-        if "3" in model_name: model_name = "gemini-1.5-flash" # Proteção contra nomes inexistentes
+        # Mantemos o nome original se for um modelo 3.1 real, senão usamos o fallback
+        if "3" in model_name and "3.1" not in model_name:
+            model_name = "gemini-1.5-flash"
 
         gen_response = client.models.generate_content(
             model=model_name,
