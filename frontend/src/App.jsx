@@ -270,10 +270,11 @@ function App() {
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem('rag-settings')
     return saved ? JSON.parse(saved) : {
-      apiKey: '',
       model: 'gemini-2.5-flash'
     }
   })
+  const [userProfile, setUserProfile] = useState(null)
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
   const [lastQuery, setLastQuery] = useState('')
   const [documents, setDocuments] = useState([])
   const [sidebarLoading, setSidebarLoading] = useState(false)
@@ -282,6 +283,9 @@ function App() {
   const [isWordWrap, setIsWordWrap] = useState(true)
   const [trending, setTrending] = useState([])
   const [isBackendOnline, setIsBackendOnline] = useState(false)
+  const [isGeminiActive, setIsGeminiActive] = useState(false)
+  const [geminiError, setGeminiError] = useState('')
+  const [activeEngine, setActiveEngine] = useState('AGENT-RAG-2.5')
   const chatEndRef = useRef(null)
 
   useEffect(() => {
@@ -300,6 +304,7 @@ function App() {
       if (session) {
         checkVerification(session.user.email);
         loadChats(session.user.email);
+        loadUserProfile(session.user.email);
       }
       setAuthLoading(false);
     });
@@ -309,11 +314,13 @@ function App() {
       if (session) {
         checkVerification(session.user.email);
         loadChats(session.user.email);
+        loadUserProfile(session.user.email);
       } else {
         setIsVerified(false);
         setChats([]);
         setActiveChatId(null);
         setMessages([]);
+        setUserProfile(null);
       }
     });
 
@@ -323,13 +330,20 @@ function App() {
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        const response = await fetch(`${API_BASE}/api`)
+        const queryParams = session?.user?.email ? `?email=${session.user.email}` : ''
+        const response = await fetch(`${API_BASE}/api${queryParams}`)
         if (response.ok) {
+          const data = await response.json()
           setIsBackendOnline(true)
+          const isHealthy = data.gemini === 'healthy'
+          setIsGeminiActive(isHealthy)
+          setGeminiError(isHealthy ? '' : data.gemini)
+          if (data.engine) setActiveEngine(data.engine)
           return true
         }
       } catch (err) {
         setIsBackendOnline(false)
+        setIsGeminiActive(false)
         return false
       }
       return false
@@ -434,6 +448,40 @@ function App() {
     } finally {
       setIsUploading(false)
     }
+  }
+
+  const loadUserProfile = async (email) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/profile/${email}`)
+      if (res.ok) {
+        const data = await res.json()
+        setUserProfile(data)
+        // Show onboarding if key is missing and modal not hidden
+        if (!data.has_key && !data.hide_setup_modal) {
+          setIsOnboardingOpen(true)
+        }
+      }
+    } catch (e) {
+      console.error("Erro ao carregar perfil:", e)
+    }
+  }
+
+  const updateProfile = async (data) => {
+    if (!session) return
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/profile/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: session.user.email, ...data })
+      })
+      if (res.ok) {
+        loadUserProfile(session.user.email)
+        return true
+      }
+    } catch (e) {
+      toast.error("Erro ao salvar perfil.")
+    }
+    return false
   }
 
   const loadChats = async (email) => {
@@ -657,22 +705,15 @@ function App() {
         console.error("Erro ao criar chat automático:", e)
       }
     }
-
-    const userMessage = { role: 'user', content: query }
-    setMessages(prev => [...prev, userMessage])
-    setLastQuery(query)
-    setInput('')
-    setIsLoading(true)
     
     try {
       const response = await fetch(`${API_BASE}/api/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          query: query, 
-          top_k: 5,
+        body: JSON.stringify({
+          query: queryText,
           model: settings.model,
-          gemini_api_key: settings.apiKey || null
+          email: session.user.email
         })
       })
       
@@ -745,6 +786,62 @@ function App() {
   return (
     <TooltipProvider>
       <div className="app-container font-sans selection:bg-primary/30">
+        {/* Onboarding API Modal */}
+        <Dialog open={isOnboardingOpen} onOpenChange={setIsOnboardingOpen}>
+          <DialogContent className="glass-card border-white/5 max-w-2xl p-0 overflow-hidden rounded-[2.5rem]">
+            <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-primary to-transparent"></div>
+            <div className="p-10 space-y-8">
+              <div className="space-y-4">
+                <div className="w-16 h-16 rounded-[1.5rem] bg-primary/20 flex items-center justify-center text-primary mb-6 shadow-2xl">
+                   <Zap className="w-8 h-8" />
+                </div>
+                <DialogTitle className="text-3xl font-black text-white tracking-tighter uppercase">Ative seu Agente Neural</DialogTitle>
+                <DialogDescription className="text-foreground/40 font-bold leading-relaxed text-base">
+                  Para utilizar a Inteligência Multimodal da Casas Bahia, você precisa configurar sua própria chave de acesso (API Key) do Google Gemini. Sua chave é armazenada de forma segura e privada no seu perfil.
+                </DialogDescription>
+              </div>
+
+              <div className="space-y-6">
+                <div className="p-6 rounded-[2rem] bg-white/5 border border-white/5 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <ExternalLink className="w-4 h-4 text-primary" />
+                    <a 
+                      href="https://aistudio.google.com/app/apikey" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-primary font-black uppercase text-xs tracking-widest hover:underline"
+                    >
+                      Obter Chave no Google AI Studio →
+                    </a>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-black text-foreground/30 uppercase tracking-widest px-1">Chave API Gemini</Label>
+                    <Input 
+                      placeholder="Cole sua chave aqui (ex: AIza...)" 
+                      className="bg-black/40 border-white/5 rounded-2xl h-12 text-white font-mono text-sm focus:border-primary/40 focus:ring-0"
+                      onChange={(e) => {
+                        const val = e.target.value.trim()
+                        if (val.length > 20) {
+                          updateProfile({ gemini_api_key: val })
+                          setIsOnboardingOpen(false)
+                          toast.success("Mecanismo de IA ativado com sucesso!")
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 px-2 group cursor-pointer" onClick={() => updateProfile({ hide_setup_modal: true }).then(() => setIsOnboardingOpen(false))}>
+                   <div className="w-5 h-5 rounded-md border border-white/10 flex items-center justify-center group-hover:border-primary/40 transition-colors">
+                      <div className="w-2 h-2 rounded-sm bg-primary opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                   </div>
+                   <span className="text-[11px] font-black text-foreground/20 uppercase tracking-wider group-hover:text-foreground/40 transition-colors">Entendido, não mostrar novamente</span>
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <Toaster position="top-center" richColors theme="dark" />
         
         {/* Sidebar */}
@@ -793,6 +890,31 @@ function App() {
                     )}>
                       {isBackendOnline ? 'Sincronizado' : 'Offline'}
                     </Badge>
+                    
+                    {isBackendOnline && (
+                      <div className="flex items-center gap-3 pl-4 border-l border-white/5 ml-1 animate-fade-in">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex items-center gap-2 cursor-help">
+                               <div className={cn(
+                                 "w-1.5 h-1.5 rounded-full animate-pulse",
+                                 isGeminiActive ? "bg-primary shadow-[0_0_10px_rgba(var(--primary),0.8)]" : "bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.8)]"
+                               )}></div>
+                               <span className={cn("text-[10px] font-black uppercase tracking-widest", isGeminiActive ? "text-primary/70" : "text-rose-500/70")}>
+                                 {isGeminiActive ? 'Neural Core Active' : 'Neural Core Error'}
+                               </span>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-slate-900 border-white/10 text-[10px] font-bold max-w-xs">
+                             {isGeminiActive ? 'Conexão estável com Google Cloud AI' : `Falha Crítica: ${geminiError}`}
+                          </TooltipContent>
+                        </Tooltip>
+                        
+                        <Badge className="bg-white/5 border-white/10 text-[9px] font-black uppercase tracking-tighter text-foreground/40 px-2 py-0.5">
+                           {activeEngine}
+                        </Badge>
+                      </div>
+                    )}
                  </div>
               </div>
             </div>

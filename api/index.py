@@ -142,6 +142,32 @@ class SupabaseLite:
             print(f"CRITICAL: System Exception in save_otp: {str(e)}")
             return False
 
+    async def get_user_profile(self, email):
+        try:
+            async with httpx.AsyncClient() as client:
+                email_clean = email.strip()
+                rest_url = f"{self.url.replace('/rest/v1', '')}/rest/v1/telegr_auth"
+                params = {"email": f"eq.{email_clean}"}
+                res = await client.get(rest_url, headers=self.headers, params=params)
+                data = res.json()
+                return data[0] if res.status_code == 200 and data else None
+        except Exception as e:
+            print(f"Error fetching user profile: {str(e)}")
+            return None
+
+    async def update_user_profile(self, email, data):
+        try:
+            async with httpx.AsyncClient() as client:
+                email_clean = email.strip()
+                # Use PATCH with email filter to update specific user
+                rest_url = f"{self.url.replace('/rest/v1', '')}/rest/v1/telegr_auth"
+                params = {"email": f"eq.{email_clean}"}
+                res = await client.patch(rest_url, headers=self.headers, params=params, json=data)
+                return res.status_code in [200, 204]
+        except Exception as e:
+            print(f"Error updating user profile: {str(e)}")
+            return False
+
     async def verify_otp(self, email, otp):
         try:
             async with httpx.AsyncClient() as client:
@@ -262,6 +288,11 @@ class OTPVerifyRequest(BaseModel):
     email: str
     otp_code: str
 
+class ProfileUpdate(BaseModel):
+    email: str
+    gemini_api_key: Optional[str] = None
+    hide_setup_modal: Optional[bool] = None
+
 class ChatCreateRequest(BaseModel):
     email: str
     title: Optional[str] = "Nova Conversa"
@@ -272,15 +303,51 @@ class ChatUpdateRequest(BaseModel):
 
 # Routes
 @app.get("/api")
-async def root():
+async def root(email: Optional[str] = None):
+    gemini_status = "missing"
+    engine_name = "AGENT-RAG-2.5"
+    
+    if email and sb_lite:
+        profile = await sb_lite.get_user_profile(email)
+        user_key = profile.get("gemini_api_key") if profile else None
+        if user_key:
+            try:
+                client = get_gemini_client(user_key)
+                for _ in client.models.list_models(): break 
+                gemini_status = "healthy"
+            except Exception as e:
+                gemini_status = f"error: {str(e)[:50]}"
+        else:
+            gemini_status = "key_not_set"
+    
     return {
-        "message": "RAG Multimodal Agent API (Vercel Production) is running",
+        "message": "Casas Bahia AI Workstation Operational",
         "supabase": "connected" if sb_lite else "disconnected",
-        "env": {
-            "GEMINI_KEY": "present" if os.getenv("GEMINI_API_KEY") else "missing",
-            "PINECONE_KEY": "present" if os.getenv("PINECONE_API_KEY") else "missing"
-        }
+        "gemini": gemini_status,
+        "engine": engine_name,
+        "pinecone": "connected" if get_pinecone_index() else "disconnected"
     }
+
+@app.get("/api/auth/profile/{email}")
+async def get_profile(email: str):
+    if not sb_lite: raise HTTPException(status_code=503, detail="Supabase not connected")
+    profile = await sb_lite.get_user_profile(email)
+    if not profile: raise HTTPException(status_code=404, detail="User not found")
+    # Redact API Key for security
+    profile_safe = {**profile}
+    if profile_safe.get("gemini_api_key"):
+        profile_safe["gemini_api_key"] = f"{profile_safe['gemini_api_key'][:8]}...{profile_safe['gemini_api_key'][-4:]}"
+        profile_safe["has_key"] = True
+    else:
+        profile_safe["has_key"] = False
+    return profile_safe
+
+@app.post("/api/auth/profile/update")
+async def update_profile(req: ProfileUpdate):
+    if not sb_lite: raise HTTPException(status_code=503, detail="Supabase not connected")
+    success = await sb_lite.update_user_profile(req.email, {k: v for k, v in req.dict().items() if v is not None and k != "email"})
+    if not success: raise HTTPException(status_code=500, detail="Failed to update profile")
+    return {"success": True}
 
 @app.get("/api/documents")
 async def list_documents():
@@ -375,17 +442,26 @@ async def delete_chat(chat_id: str):
 # Indexing and Search (Lazy)
 @app.post("/api/search")
 async def search(search_query: SearchQuery):
-    print(f"--- DEBUG: Incoming /api/search | Query: {search_query.query} | Model: {search_query.model}")
-    client = get_gemini_client(search_query.gemini_api_key)
+    print(f"--- RAG SEARCH | Query: {search_query.query} | User: {search_query.email}")
+    
+    # 1. Fetch Key from Supabase Profile
+    if not sb_lite: raise HTTPException(status_code=503, detail="Supabase not connected")
+    profile = await sb_lite.get_user_profile(search_query.email)
+    user_key = profile.get("gemini_api_key") if profile else None
+    
+    if not user_key:
+        raise HTTPException(status_code=401, detail="API Key do Gemini não configurada. Por favor, cadastre sua chave no Workstation.")
+    
+    client = get_gemini_client(user_key)
     index = get_pinecone_index()
     
     if not client:
-        raise HTTPException(status_code=503, detail="Gemini Engine não inicializado. Chave ausente.")
+        raise HTTPException(status_code=503, detail="Gemini Engine não inicializado. Erro na chave do usuário.")
     if not index:
-        raise HTTPException(status_code=503, detail="Pinecone Engine não inicializado. Chave ausente.")
+        raise HTTPException(status_code=503, detail="Pinecone Cluster Inativo (Backend).")
 
     try:
-        # Embedding com Fallback Dinâmico
+        # Embedding logic remains same (internally uses the provided gemini client)
         formatted_query = f"task: search result | query: {search_query.query}"
         embed_response = None
         
