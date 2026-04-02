@@ -393,8 +393,7 @@ async def search(search_query: SearchQuery):
         
         return {"answer": gen_response.text, "sources": matches}
     except Exception as e:
-        traceback.print_exc()
-        error_msg = str(e)
-        if "404" in error_msg: error_msg = f"Modelo '{model_name}' não encontrado ou indisponível."
-        if "429" in error_msg: error_msg = "Quota excedida no Google Gemini."
-        raise HTTPException(status_code=500, detail=error_msg)
+        import traceback
+        full_error = f"{str(e)}\n{traceback.format_exc()}"
+        print(f"--- CRITICAL ERROR: {full_error}")
+        raise HTTPException(status_code=500, detail=full_error)
