@@ -2,6 +2,8 @@ import os
 import json
 import httpx
 import uuid
+import datetime
+from datetime import timedelta
 import traceback
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File
@@ -57,6 +59,32 @@ class SupabaseLite:
         except: return False
 
     # Stats Operations (Exclusive Cloud)
+    async def get_user_profile(self, email):
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.url}/telegr_auth?email=eq.{email}&select=*"
+                res = await client.get(url, headers=self.headers)
+                data = res.json()
+                return data[0] if data else None
+        except: return None
+
+    async def update_user_profile(self, email, data):
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.url}/telegr_auth?email=eq.{email}"
+                headers = {**self.headers, "Prefer": "return=representation"}
+                res = await client.patch(url, headers=headers, json=data)
+                return res.status_code in [200, 204]
+        except: return False
+
+    async def get_ai_models(self):
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.url}/ai_models?is_active=eq.true&select=*&order=created_at.asc"
+                res = await client.get(url, headers=self.headers)
+                return res.json()
+        except: return []
+
     async def get_stats(self, prompt_id):
         try:
             async with httpx.AsyncClient() as client:
@@ -111,7 +139,7 @@ class SupabaseLite:
     async def save_otp(self, email, otp, chat_id):
         """
         Atomic UPSERT operation for OTP storage.
-        Uses PostgREST 'on_conflict' to handle existing email records reliably.
+        Uses PostgREST standard headers for merge-duplicates resolution.
         """
         try:
             async with httpx.AsyncClient() as client:
@@ -121,51 +149,35 @@ class SupabaseLite:
                 except: 
                     clean_id = 0
                 
+                # Calculate expiry in Python for better JSON compatibility
+                expiry = (datetime.datetime.now() + timedelta(minutes=10)).isoformat()
+                
                 payload = {
                     "email": email_clean, 
                     "otp_code": str(otp), 
                     "chat_id": clean_id,
                     "is_verified": False,
-                    "expires_at": "now() + interval '10 minutes'"
+                    "expires_at": expiry
                 }
                 
-                # Using POST with on_conflict parameter for atomic UPSERT
-                # Ensure we point to REST API v1
+                # Standard Supabase Upsert Headers
+                # Prefer: resolution=merge-duplicates + on_conflict
+                headers = {
+                    **self.headers,
+                    "Prefer": "resolution=merge-duplicates"
+                }
+                
+                # Point to endpoint with on_conflict query param
                 url = f"{self.url.replace('/rest/v1', '')}/rest/v1/telegr_auth?on_conflict=email"
-                res = await client.post(url, headers=self.headers, json=payload)
+                res = await client.post(url, headers=headers, json=payload)
                 
                 if res.status_code not in [200, 201, 204]:
-                    print(f"CRITICAL: Supabase SQL Error ({res.status_code}): {res.text}")
+                    print(f"CRITICAL MFA ERROR ({res.status_code}): {res.text}")
                     return False
+                print(f"SUCCESS: OTP registered for {email_clean}")
                 return True
         except Exception as e:
             print(f"CRITICAL: System Exception in save_otp: {str(e)}")
-            return False
-
-    async def get_user_profile(self, email):
-        try:
-            async with httpx.AsyncClient() as client:
-                email_clean = email.strip()
-                rest_url = f"{self.url.replace('/rest/v1', '')}/rest/v1/telegr_auth"
-                params = {"email": f"eq.{email_clean}"}
-                res = await client.get(rest_url, headers=self.headers, params=params)
-                data = res.json()
-                return data[0] if res.status_code == 200 and data else None
-        except Exception as e:
-            print(f"Error fetching user profile: {str(e)}")
-            return None
-
-    async def update_user_profile(self, email, data):
-        try:
-            async with httpx.AsyncClient() as client:
-                email_clean = email.strip()
-                # Use PATCH with email filter to update specific user
-                rest_url = f"{self.url.replace('/rest/v1', '')}/rest/v1/telegr_auth"
-                params = {"email": f"eq.{email_clean}"}
-                res = await client.patch(rest_url, headers=self.headers, params=params, json=data)
-                return res.status_code in [200, 204]
-        except Exception as e:
-            print(f"Error updating user profile: {str(e)}")
             return False
 
     async def verify_otp(self, email, otp):
@@ -333,21 +345,21 @@ async def get_profile(email: str):
     if not sb_lite: raise HTTPException(status_code=503, detail="Supabase not connected")
     profile = await sb_lite.get_user_profile(email)
     if not profile: raise HTTPException(status_code=404, detail="User not found")
-    # Redact API Key for security
-    profile_safe = {**profile}
-    if profile_safe.get("gemini_api_key"):
-        profile_safe["gemini_api_key"] = f"{profile_safe['gemini_api_key'][:8]}...{profile_safe['gemini_api_key'][-4:]}"
-        profile_safe["has_key"] = True
-    else:
-        profile_safe["has_key"] = False
-    return profile_safe
+    # Redact API Key for security unless requested
+    return profile
 
-@app.post("/api/auth/profile/update")
-async def update_profile(req: ProfileUpdate):
+@app.patch("/api/auth/profile/{email}")
+async def update_profile_endpoint(email: str, data: dict):
     if not sb_lite: raise HTTPException(status_code=503, detail="Supabase not connected")
-    success = await sb_lite.update_user_profile(req.email, {k: v for k, v in req.dict().items() if v is not None and k != "email"})
-    if not success: raise HTTPException(status_code=500, detail="Failed to update profile")
+    success = await sb_lite.update_user_profile(email, data)
+    if not success: raise HTTPException(status_code=500, detail="Falha ao atualizar perfil")
     return {"success": True}
+
+@app.get("/api/ai/models")
+async def list_ai_models():
+    if not sb_lite: raise HTTPException(status_code=503, detail="Supabase not connected")
+    models = await sb_lite.get_ai_models()
+    return models
 
 @app.get("/api/documents")
 async def list_documents():

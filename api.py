@@ -52,6 +52,58 @@ class SupabaseLite:
             "Prefer": "return=representation"
         }
 
+    async def get_user_profile(self, email):
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.url}/telegr_auth?email=eq.{email}&select=*"
+                res = await client.get(url, headers=self.headers)
+                data = res.json()
+                return data[0] if data else None
+        except: return None
+
+    async def update_user_profile(self, email, data):
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.url}/telegr_auth?email=eq.{email}"
+                headers = {**self.headers, "Prefer": "return=representation"}
+                res = await client.patch(url, headers=headers, json=data)
+                return res.status_code in [200, 204]
+        except: return False
+
+    async def get_ai_models(self):
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.url}/ai_models?is_active=eq.true&select=*&order=created_at.asc"
+                res = await client.get(url, headers=self.headers)
+                return res.json()
+        except: return []
+
+    async def get_user_profile(self, email):
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.url}/telegr_auth?email=eq.{email}&select=*"
+                res = await client.get(url, headers=self.headers)
+                data = res.json()
+                return data[0] if data else None
+        except: return None
+
+    async def update_user_profile(self, email, data):
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.url}/telegr_auth?email=eq.{email}"
+                headers = {**self.headers, "Prefer": "return=representation"}
+                res = await client.patch(url, headers=headers, json=data)
+                return res.status_code in [200, 204]
+        except: return False
+
+    async def get_ai_models(self):
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.url}/ai_models?is_active=eq.true&select=*&order=created_at.asc"
+                res = await client.get(url, headers=self.headers)
+                return res.json()
+        except: return []
+
     async def get_stats(self, prompt_id):
         if not SUPABASE_URL or not SUPABASE_ANON_KEY:
             return None
@@ -525,6 +577,7 @@ class SearchQuery(BaseModel):
     top_k: Optional[int] = 5
     model: Optional[str] = None
     gemini_api_key: Optional[str] = None
+    email: Optional[str] = None
 
 class SearchResult(BaseModel):
     id: str
@@ -639,28 +692,80 @@ async def delete_document(filename: str):
         )
 
 @app.get("/api")
-async def root():
-    return {"message": "RAG Multimodal Agent API is running"}
+async def root(email: Optional[str] = None):
+    gemini_status = "missing"
+    engine_name = "AGENT-RAG-2.5"
+    
+    if email and sb_lite:
+        profile = await sb_lite.get_user_profile(email)
+        user_key = profile.get("gemini_api_key") if profile else None
+        if user_key:
+            try:
+                temp_client = genai.Client(api_key=user_key)
+                for _ in temp_client.models.list_models(): break 
+                gemini_status = "healthy"
+            except Exception as e:
+                gemini_status = f"error: {str(e)[:50]}"
+        else:
+            gemini_status = "key_not_set"
+    
+    return {
+        "message": "Casas Bahia AI Workstation Operational",
+        "supabase": "connected" if sb_lite else "disconnected",
+        "gemini": gemini_status,
+        "engine": engine_name,
+        "pinecone": "connected" if get_pinecone_index() else "disconnected"
+    }
+
+@app.get("/api/auth/profile/{email}")
+async def get_profile(email: str):
+    if not sb_lite: raise HTTPException(status_code=503, detail="Supabase not connected")
+    profile = await sb_lite.get_user_profile(email)
+    if not profile: raise HTTPException(status_code=404, detail="User not found")
+    return profile
+
+@app.patch("/api/auth/profile/{email}")
+async def update_profile_endpoint(email: str, data: dict):
+    if not sb_lite: raise HTTPException(status_code=503, detail="Supabase not connected")
+    # Removendo 'email' dos dados se enviado no body (usamos o da URL)
+    data.pop('email', None)
+    success = await sb_lite.update_user_profile(email, data)
+    if not success: raise HTTPException(status_code=500, detail="Falha ao atualizar perfil")
+    return {"success": True}
+
+@app.get("/api/ai/models")
+async def list_ai_models():
+    if not sb_lite: raise HTTPException(status_code=503, detail="Supabase not connected")
+    models = await sb_lite.get_ai_models()
+    return models
 
 
 @app.post("/api/search", response_model=ChatResponse)
 async def search(search_query: SearchQuery):
-    # Determinar qual cliente e modelo usar
-    active_client = client
+    # CLIENTE: Prioridade para a chave enviada na query (configurações do usuário)
+    # Se não houver, tenta usar a variável de ambiente global (fallback admin)
+    active_client = None
+    user_key = search_query.gemini_api_key
+    
+    if user_key:
+        try:
+            active_client = genai.Client(api_key=user_key)
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Chave Gemini Inválida: {str(e)}")
+    else:
+        active_client = client # Fallback para a chave do .env se existir
+
+    if not active_client:
+        raise HTTPException(status_code=403, detail="Gemini API Key não configurada. Por favor, adicione sua chave nas configurações.")
+
+    # MODELO: Prioridade para o modelo salvo no perfil do usuário
     active_model = search_query.model if search_query.model else GENERATIVE_MODEL
 
-    # Se o usuário forneceu uma chave própria, gera um cliente temporário
-    if search_query.gemini_api_key:
-        try:
-            active_client = genai.Client(api_key=search_query.gemini_api_key)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Erro ao inicializar cliente com sua chave Custom: {str(e)}")
-
-    if not active_client or not index:
-        raise HTTPException(status_code=503, detail="Serviços de IA (Gemini/Pinecone) não estão inicializados corretamente e nenhuma chave custom foi provida.")
+    if not index:
+        raise HTTPException(status_code=503, detail="Serviço de Busca Vetorial (Pinecone) indisponível.")
 
     try:
-        # 1. Gerar vetor da query (Busca Assimétrica)
+        # 1. Gerar vetor da query
         formatted_query = f"task: search result | query: {search_query.query}"
         
         embed_response = safe_embed_content(
@@ -670,30 +775,24 @@ async def search(search_query: SearchQuery):
         )
         query_vector = embed_response.embeddings[0].values
         
-        # 2. Consultar Pinecone (Retrieval)
+        # 2. Consultar Pinecone
         results = index.query(
             vector=query_vector,
             top_k=search_query.top_k,
             include_metadata=True
         )
         
-        # 3. Consolidar contexto para o LLM
+        # 3. Consolidar contexto
         context_text = ""
         formatted_results = []
         for match in results.matches:
-            # Pega o texto extraído do PDF
-            text = match.metadata.get("text_content", "")
-            context_text += f"\n- {text}\n"
+            msg = match.metadata.get("text_content", "")
+            context_text += f"\n- {msg}\n"
             
-            # Formatar para o frontend (Exibição dos Cards)
             metadata = match.metadata
             if "source" in metadata:
                 source_url = metadata["source"]
-                if source_url.startswith("http"):
-                    metadata["media_url"] = source_url
-                else:
-                    rel_path = source_url.replace("data/", "")
-                    metadata["media_url"] = f"/media/{rel_path}"
+                metadata["media_url"] = source_url # URL direta do Supabase Storage
                 
             formatted_results.append(SearchResult(
                 id=match.id,
@@ -701,23 +800,32 @@ async def search(search_query: SearchQuery):
                 metadata=metadata
             ))
         
-        # 4. Geração da Resposta (Augmented Generation)
-        prompt = SYSTEM_PROMPT.format(context=context_text)
+        # 4. Geração da Resposta com Fallback de Modelo (em caso de cota/erro)
+        # Tenta o modelo ativo, depois flash lite como seguro
+        model_candidates = [active_model, "gemini-2.5-flash", "gemini-1.5-flash"]
+        gen_response = None
+        last_err = None
         
-        gen_response = safe_generate_content(
-            client=active_client,
-            model=active_model,
-            contents=search_query.query,
-            config=types.GenerateContentConfig(
-                system_instruction=prompt,
-                temperature=0.3
-            )
-        )
-        
-        ai_answer = gen_response.text if gen_response.text else "Não consegui gerar uma resposta agora."
+        for candidate in model_candidates:
+            if not candidate: continue
+            try:
+                prompt = SYSTEM_PROMPT.format(context=context_text)
+                gen_response = safe_generate_content(
+                    client=active_client,
+                    model=candidate,
+                    contents=search_query.query,
+                    config=types.GenerateContentConfig(system_instruction=prompt, temperature=0.3)
+                )
+                if gen_response: break
+            except Exception as candidate_err:
+                last_err = str(candidate_err)
+                continue
+
+        if not gen_response:
+            raise Exception(f"Erro ao gerar resposta com Gemini: {last_err}")
             
         return ChatResponse(
-            answer=ai_answer,
+            answer=gen_response.text if gen_response.text else "Sem resposta.",
             sources=formatted_results
         )
     except Exception as e:

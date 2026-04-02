@@ -23,6 +23,7 @@ import {
   Copy, 
   Check, 
   Eye, 
+  EyeOff,
   Users, 
   FileText, 
   Image as ImageIcon, 
@@ -41,6 +42,7 @@ import {
   Terminal,
   Cpu,
   ChevronRight,
+  ChevronDown,
   Maximize2,
   ExternalLink,
   Bot,
@@ -51,7 +53,7 @@ import {
   History
 } from 'lucide-react';
 
-const API_BASE = window.location.origin.includes('localhost') ? 'http://localhost:8001' : '';
+const API_BASE = '';
 
 const getStatKey = (text) => {
   if (!text) return 'p-empty'
@@ -286,6 +288,9 @@ function App() {
   const [isGeminiActive, setIsGeminiActive] = useState(false)
   const [geminiError, setGeminiError] = useState('')
   const [activeEngine, setActiveEngine] = useState('AGENT-RAG-2.5')
+  const [showApiKey, setShowApiKey] = useState(false)
+  const [aiModels, setAiModels] = useState([])
+  const [isUpdatingSettings, setIsUpdatingSettings] = useState(false)
   const chatEndRef = useRef(null)
 
   useEffect(() => {
@@ -303,8 +308,8 @@ function App() {
       setSession(session);
       if (session) {
         checkVerification(session.user.email);
-        loadChats(session.user.email);
-        loadUserProfile(session.user.email);
+        fetchChats();
+        loadUserProfile();
       }
       setAuthLoading(false);
     });
@@ -313,8 +318,8 @@ function App() {
       setSession(session);
       if (session) {
         checkVerification(session.user.email);
-        loadChats(session.user.email);
-        loadUserProfile(session.user.email);
+        fetchChats();
+        loadUserProfile();
       } else {
         setIsVerified(false);
         setChats([]);
@@ -450,50 +455,44 @@ function App() {
     }
   }
 
-  const loadUserProfile = async (email) => {
+  const loadUserProfile = async () => {
+    if (!session?.user?.email) return;
     try {
+      const email = encodeURIComponent(session.user.email);
       const res = await fetch(`${API_BASE}/api/auth/profile/${email}`)
-      if (res.ok) {
-        const data = await res.json()
+      const data = await res.json()
+      if (data) {
         setUserProfile(data)
-        // Show onboarding if key is missing and modal not hidden
-        if (!data.has_key && !data.hide_setup_modal) {
-          setIsOnboardingOpen(true)
-        }
+        setIsOnboardingOpen(!data.gemini_api_key && !data.hide_setup_modal)
       }
-    } catch (e) {
-      console.error("Erro ao carregar perfil:", e)
-    }
+    } catch (e) { console.error("Error profile:", e) }
   }
 
   const updateProfile = async (data) => {
-    if (!session) return
     try {
-      const res = await fetch(`${API_BASE}/api/auth/profile/update`, {
-        method: 'POST',
+      const email = encodeURIComponent(session.user.email);
+      const res = await fetch(`${API_BASE}/api/auth/profile/${email}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: session.user.email, ...data })
+        body: JSON.stringify(data)
       })
       if (res.ok) {
-        loadUserProfile(session.user.email)
+        loadUserProfile()
         return true
       }
-    } catch (e) {
-      toast.error("Erro ao salvar perfil.")
-    }
+    } catch (e) { console.error("Error update:", e) }
     return false
   }
 
-  const loadChats = async (email) => {
+  const fetchChats = async () => {
+    if (!session?.user?.email) return;
+    setSidebarLoading(true)
     try {
+      const email = encodeURIComponent(session.user.email);
       const res = await fetch(`${API_BASE}/api/chats/${email}`)
-      if (res.ok) {
-        const data = await res.json()
-        setChats(data)
-      }
-    } catch (e) {
-      console.error("Erro ao carregar chats:", e)
-    }
+      const data = await res.json()
+      setChats(data || [])
+    } finally { setSidebarLoading(false) }
   }
 
   const handleNewChat = async () => {
@@ -676,24 +675,38 @@ function App() {
   }, [settings])
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isLoading])
+    if (!session?.user?.email) return;
+    const email = encodeURIComponent(session.user.email);
+    fetch(`${API_BASE}/api/ai/models`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setAiModels(Array.isArray(data) ? data : []))
+      .catch(err => {
+        console.error("Falha ao carregar modelos:", err);
+        setAiModels([]);
+      })
+  }, [session])
 
-  const handleSearch = async () => {
-    if (!input.trim() || !session) return
+  const handleSearch = async (textOverride) => {
+    const query = textOverride || input
+    if (!query.trim() || !session || isLoading) return
     
-    let currentChatId = activeChatId
+    // 1. Pre-process UI
     const isFirstMessage = messages.length === 0
-    const query = input.trim()
+    const userMessage = { role: 'user', content: query }
+    setMessages(prev => [...prev, userMessage])
+    setInput('')
+    setIsLoading(true)
+    setLastQuery(query)
+
+    let currentChatId = activeChatId
     
-    // 1. Criar chat automaticamente se não houver um ativo
+    // 2. Clear auto-chat creation if needed
     if (!currentChatId) {
-      setIsLoading(true)
       try {
         const resp = await fetch(`${API_BASE}/api/chats`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: session.user.email, title: "Nova Conversa" })
+          body: JSON.stringify({ email: session.user.email, title: query.substring(0, 30) })
         })
         if (resp.ok) {
           const newChat = await resp.json()
@@ -711,33 +724,28 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          query: queryText,
-          model: settings.model,
+          query: query,
+          model: userProfile?.selected_model,
+          gemini_api_key: userProfile?.gemini_api_key,
           email: session.user.email
         })
       })
       
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({ detail: `Erro ${response.status}: Comunicação Síncrona Interrompida.` }));
-        const errorMessage = errData.detail || errData.message || 'Falha na resposta do servidor.';
-        throw new Error(errorMessage);
+        const errData = await response.json().catch(() => ({ detail: `Erro ${response.status}: Comunicação Falhou.` }));
+        throw new Error(errData.detail || 'Falha na resposta do servidor.');
       }
       
       const data = await response.json()
       const aiMessage = { role: 'ai', content: data.answer, results: data.sources }
-      const updatedMessages = [...messages, userMessage, aiMessage]
-      
       setMessages(prev => [...prev, aiMessage])
 
-      // 2. Atualizar título do chat se for a primeira mensagem (Smart Naming)
+      // 3. Sync persistence
       if (isFirstMessage && currentChatId) {
-        const title = query.length > 30 ? query.substring(0, 30) + "..." : query
         fetch(`${API_BASE}/api/chats/${currentChatId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: updatedMessages, title: title })
-        }).then(() => {
-          setChats(prev => prev.map(c => c.id === currentChatId ? { ...c, title, messages: updatedMessages } : c))
+          body: JSON.stringify({ messages: [userMessage, aiMessage] })
         })
       }
     } catch (error) {
@@ -1095,7 +1103,7 @@ function App() {
                         "h-14 w-14 rounded-full transition-all duration-500 shadow-2xl",
                         input.trim() ? "bg-primary hover:bg-primary/80 text-white scale-100" : "bg-white/5 text-white/5 scale-90"
                       )} 
-                      onClick={handleSearch}
+                      onClick={() => handleSearch()}
                       disabled={!input.trim() || isLoading}
                       aria-label="Confirmar Comando"
                     >
@@ -1193,36 +1201,71 @@ function App() {
                   Ajustar motor de processamento neural
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-8 py-4">
-                <div className="space-y-3">
-                  <Label className="text-subtitle ml-1">Modelo de Inferência</Label>
-                  <select 
-                    className="w-full bg-slate-950/40 border border-white/5 rounded-2xl h-12 px-5 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-primary/40 appearance-none transition-all hover:bg-white/[0.03]"
-                    value={settings.model} 
-                    onChange={(e) => setSettings({...settings, model: e.target.value})}
-                  >
-                    <option value="gemini-3-flash-preview">Gemini 3 Flash (Otimizado)</option>
-                    <option value="gemini-3.1-flash-lite-preview">Gemini 3.1 Lite (Velocidade)</option>
-                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (Estável)</option>
-                  </select>
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-black text-foreground/30 uppercase tracking-widest px-1">Modelo de Inferência</Label>
+                  <div className="relative group/model">
+                    <select 
+                      className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 pr-12 text-white font-bold text-sm focus:outline-none focus:ring-1 focus:ring-primary/40 appearance-none cursor-pointer transition-all hover:bg-black/60"
+                      value={userProfile?.selected_model || 'gemini-2.5-flash'}
+                      onChange={(e) => setUserProfile(prev => ({ ...prev, selected_model: e.target.value }))}
+                    >
+                      {Array.isArray(aiModels) && aiModels.map(m => (
+                        <option key={m.slug} value={m.slug} className="bg-slate-900">{m.name}</option>
+                      ))}
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-foreground/20 group-hover/model:text-primary transition-colors">
+                      <ChevronDown className="w-4 h-4" />
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-3">
-                  <Label className="text-subtitle ml-1">Token de Acesso (API Key)</Label>
-                  <Input 
-                    type="password" 
-                    value={settings.apiKey} 
-                    onChange={(e) => setSettings({...settings, apiKey: e.target.value})} 
-                    placeholder="Integrar chave proprietária..." 
-                    className="bg-slate-950/40 border-white/5 h-12 rounded-2xl px-5 focus-visible:ring-primary/40 text-white placeholder:text-white/5"
-                  />
-                  <p className="text-[9px] text-foreground/20 italic font-black uppercase tracking-tight px-1">Encriptação local (AES-256) ativa no browser.</p>
+
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-black text-foreground/30 uppercase tracking-widest px-1">Token de Acesso (API Key)</Label>
+                  <div className="relative group/key">
+                    <Input 
+                      type={showApiKey ? "text" : "password"}
+                      value={userProfile?.gemini_api_key || ''}
+                      placeholder="AIza..."
+                      onChange={(e) => setUserProfile(prev => ({ ...prev, gemini_api_key: e.target.value }))}
+                      className="bg-black/40 border-white/5 rounded-2xl h-14 pr-12 text-white font-mono text-sm focus:ring-primary/20"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setShowApiKey(!showApiKey)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 h-10 w-10 text-foreground/30 hover:text-white rounded-xl"
+                    >
+                      {showApiKey ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </Button>
+                  </div>
+                  <p className="text-[9px] text-foreground/20 font-black uppercase tracking-tighter px-2 italic">
+                     Chave proprietária. Altere para ativar recursos avançados.
+                  </p>
+                </div>
+
+                <div className="pt-4">
+                   <Button 
+                      className="w-full h-16 rounded-[2rem] bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-[0.15em] text-sm shadow-2xl shadow-primary/20 transition-all active:scale-95 disabled:opacity-50"
+                      disabled={isUpdatingSettings}
+                      onClick={async () => {
+                        setIsUpdatingSettings(true)
+                        try {
+                          await updateProfile({ 
+                            gemini_api_key: userProfile.gemini_api_key,
+                            selected_model: userProfile.selected_model
+                          })
+                          setIsSettingsOpen(false)
+                          toast.success("Parâmetros preservados no cluster Supabase")
+                        } finally {
+                          setIsUpdatingSettings(false)
+                        }
+                      }}
+                   >
+                     {isUpdatingSettings ? 'Sincronizando...' : 'Salvar no Supabase'}
+                   </Button>
                 </div>
               </div>
-              <DialogFooter className="mt-6">
-                <Button className="w-full h-12 rounded-2xl bg-primary hover:bg-primary/80 text-white font-black uppercase text-[11px] tracking-widest shadow-2xl shadow-primary/20 transition-all active:scale-95" onClick={() => setIsSettingsOpen(false)}>
-                  Salvar Mudanças
-                </Button>
-              </DialogFooter>
             </DialogContent>
           </Dialog>
 
@@ -1260,6 +1303,6 @@ function App() {
       </div>
     </TooltipProvider>
   );
-};
+}
 
 export default App;
