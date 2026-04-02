@@ -271,7 +271,7 @@ function App() {
     const saved = localStorage.getItem('rag-settings')
     return saved ? JSON.parse(saved) : {
       apiKey: '',
-      model: 'gemini-3-flash-preview'
+      model: 'gemini-1.5-flash'
     }
   })
   const [lastQuery, setLastQuery] = useState('')
@@ -647,11 +647,14 @@ function App() {
           gemini_api_key: settings.apiKey || null
         })
       })
-      if (!response.ok) throw new Error('Erro na comunicação síncrona.')
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ detail: 'Erro na comunicação síncrona.' }));
+        throw new Error(errData.detail || 'Falha na resposta do servidor.');
+      }
       const data = await response.json()
       setMessages(prev => [...prev, { role: 'ai', content: data.answer, results: data.sources }])
     } catch (error) {
-      toast.error("Falla de rede: " + error.message);
+      toast.error("Falha no Agente: " + error.message);
     } finally { setIsLoading(false) }
   }
 

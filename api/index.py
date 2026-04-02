@@ -214,12 +214,16 @@ def get_pinecone_index():
         _index = pc.Index("multimodal-rag")
     return _index
 
-def get_gemini_client():
+def get_gemini_client(api_key=None):
     global _client
+    # Se uma chave for passada explicitamente, criamos um novo cliente temporário
+    if api_key:
+        return genai.Client(api_key=api_key)
+    
     if _client is None:
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key: return None
-        _client = genai.Client(api_key=api_key)
+        env_key = os.environ.get("GEMINI_API_KEY")
+        if not env_key: return None
+        _client = genai.Client(api_key=env_key)
     return _client
 
 # Models
@@ -253,7 +257,14 @@ class ChatUpdateRequest(BaseModel):
 # Routes
 @app.get("/api")
 async def root():
-    return {"message": "RAG Multimodal Agent API (Vercel Production) is running", "supabase": "connected" if sb_lite else "disconnected"}
+    return {
+        "message": "RAG Multimodal Agent API (Vercel Production) is running",
+        "supabase": "connected" if sb_lite else "disconnected",
+        "env": {
+            "GEMINI_KEY": "present" if os.getenv("GEMINI_API_KEY") else "missing",
+            "PINECONE_KEY": "present" if os.getenv("PINECONE_API_KEY") else "missing"
+        }
+    }
 
 @app.get("/api/documents")
 async def list_documents():
@@ -341,31 +352,48 @@ async def delete_chat(chat_id: str):
 # Indexing and Search (Lazy)
 @app.post("/api/search")
 async def search(search_query: SearchQuery):
-    client = get_gemini_client()
+    client = get_gemini_client(search_query.gemini_api_key)
     index = get_pinecone_index()
-    if not client or not index: raise HTTPException(status_code=503, detail="Engine initialization failed")
+    
+    if not client:
+        raise HTTPException(status_code=503, detail="Gemini Engine não inicializado. Chave ausente.")
+    if not index:
+        raise HTTPException(status_code=503, detail="Pinecone Engine não inicializado. Chave ausente.")
 
     try:
         # Embedding
         formatted_query = f"task: search result | query: {search_query.query}"
-        embed_response = client.models.embed_content(model="gemini-embedding-2-preview", contents=formatted_query)
+        # Usamos text-embedding-004 que é mais estável
+        embed_response = client.models.embed_content(model="text-embedding-004", contents=formatted_query)
         query_vector = embed_response.embeddings[0].values
 
         # Retrieval
         results = index.query(vector=query_vector, top_k=search_query.top_k, include_metadata=True)
         
         # Context
-        context_text = "\n".join([m.metadata.get("text_content", "") for m in results.matches])
+        matches = results.to_dict().get("matches", [])
+        context_text = "\n".join([m.get("metadata", {}).get("text_content", "") for m in matches])
         
+        if not context_text:
+            context_text = "Nenhum documento relevante encontrado na base de conhecimento."
+
         # Generation
         prompt = f"Use o contexto abaixo para responder: {context_text}"
+        
+        # Fallback de modelo para gemini-1.5-flash caso o enviado não exista
+        model_name = search_query.model if search_query.model and "flash" in search_query.model.lower() else "gemini-1.5-flash"
+        if "3" in model_name: model_name = "gemini-1.5-flash" # Proteção contra nomes inexistentes
+
         gen_response = client.models.generate_content(
-            model=search_query.model or "gemini-1.5-flash",
+            model=model_name,
             contents=search_query.query,
             config=types.GenerateContentConfig(system_instruction=prompt, temperature=0.3)
         )
         
-        return {"answer": gen_response.text, "sources": results.to_dict()["matches"]}
+        return {"answer": gen_response.text, "sources": matches}
     except Exception as e:
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e)
+        if "404" in error_msg: error_msg = f"Modelo '{model_name}' não encontrado ou indisponível."
+        if "429" in error_msg: error_msg = "Quota excedida no Google Gemini."
+        raise HTTPException(status_code=500, detail=error_msg)
