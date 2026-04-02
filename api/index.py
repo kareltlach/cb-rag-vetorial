@@ -352,6 +352,7 @@ async def delete_chat(chat_id: str):
 # Indexing and Search (Lazy)
 @app.post("/api/search")
 async def search(search_query: SearchQuery):
+    print(f"--- DEBUG: Incoming /api/search | Query: {search_query.query} | Model: {search_query.model}")
     client = get_gemini_client(search_query.gemini_api_key)
     index = get_pinecone_index()
     

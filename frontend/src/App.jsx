@@ -648,8 +648,15 @@ function App() {
         })
       })
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({ detail: 'Erro na comunicação síncrona.' }));
-        throw new Error(errData.detail || 'Falha na resposta do servidor.');
+        let errorDetail = '';
+        try {
+          const errData = await response.json();
+          errorDetail = errData.detail || JSON.stringify(errData);
+        } catch (e) {
+          const rawText = await response.text().catch(() => '');
+          errorDetail = rawText.substring(0, 100) || `Status: ${response.status}`;
+        }
+        throw new Error(`Erro ${response.status}: ${errorDetail}`);
       }
       const data = await response.json()
       setMessages(prev => [...prev, { role: 'ai', content: data.answer, results: data.sources }])
